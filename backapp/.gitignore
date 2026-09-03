@@ -1,0 +1,31 @@
+# Go binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+backapp.exe
+myapp.exe
+
+# SQLite Databases and WAL journals
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+pos.db
+test_pos.db*
+
+# Crash & debug logs
+crash.log
+*.log
+
+# Sensitive Branch Runtime Config
+qr_config.json
+!qr_config.json.example
+
+# Environment Secrets
+.env
+.env.*
+!.env.example

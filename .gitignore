@@ -1,0 +1,132 @@
+# ==============================================================================
+# SunPOS Master .gitignore - Security & Repository Hygiene
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Credentials, API Keys, Tokens & Secrets (CRITICAL FOR GITHUB SAFETY)
+# ------------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.env
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+
+# Cloud, Firebase, and Mobile Provider Secret Tokens
+*serviceAccountKey*.json
+*firebase-adminsdk*.json
+*google-services*.json
+GoogleService-Info.plist
+*credentials*.json
+*client_secret*.json
+
+# Branch local sensitive configs
+**/qr_config.json
+!**/qr_config.json.example
+**/config.local.json
+**/secrets.*
+
+# ------------------------------------------------------------------------------
+# 2. Database Files & Local SQLite Instances (NEVER COMMIT PRODUCTION/TEST DATA)
+# ------------------------------------------------------------------------------
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+*.dump
+*.sql.gz
+test_pos.db*
+pos.db*
+
+# ------------------------------------------------------------------------------
+# 3. Binaries, Compiled Executables & Native Artifacts
+# ------------------------------------------------------------------------------
+*.exe
+*.dll
+*.so
+*.dylib
+*.bin
+backapp.exe
+myapp.exe
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# ------------------------------------------------------------------------------
+# 4. Java / Kotlin / Spring Boot Build Outputs
+# ------------------------------------------------------------------------------
+**/target/
+!**/src/main/**/target/
+!**/src/test/**/target/
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+.mvn/wrapper/maven-wrapper.jar
+
+# ------------------------------------------------------------------------------
+# 5. Node.js / React / Vite (sunpos & qrorder)
+# ------------------------------------------------------------------------------
+**/node_modules/
+**/dist/
+**/dist-ssr/
+**/.vite/
+.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ------------------------------------------------------------------------------
+# 6. Android Studio & Gradle (android-pos)
+# ------------------------------------------------------------------------------
+.gradle/
+**/build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+local.properties
+.cxx/
+.externalNativeBuild/
+captures/
+.kotlin/
+
+# ------------------------------------------------------------------------------
+# 7. IDE, Editors & OS System Files
+# ------------------------------------------------------------------------------
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ------------------------------------------------------------------------------
+# 8. Logs & Diagnostic Dumps
+# ------------------------------------------------------------------------------
+*.log
+logs/
+crash.log
+*.dumpstream
+*.stackdump

@@ -1,0 +1,109 @@
+mutation CreateSeedData @transaction {
+  customer_insertMany(data: [
+    {
+      id: "550e8400-e29b-41d4-a716-446655440001",
+      name: "Alice Smith",
+      email: "alice@example.com",
+      phone: "555-0101",
+      totalSpent: 150.50
+    },
+    {
+      id: "550e8400-e29b-41d4-a716-446655440002",
+      name: "Bob Jones",
+      email: "bob@example.com",
+      phone: "555-0102",
+      totalSpent: 75.25
+    },
+    {
+      id: "550e8400-e29b-41d4-a716-446655440003",
+      name: "Charlie Brown",
+      email: "charlie@example.com",
+      phone: "555-0103",
+      totalSpent: 300.00
+    }
+  ])
+  store_insertMany(data: [
+    {
+      id: "660e8400-e29b-41d4-a716-446655440001",
+      name: "Tech Haven",
+      location: "Downtown",
+      managerName: "David Miller"
+    },
+    {
+      id: "660e8400-e29b-41d4-a716-446655440002",
+      name: "Gadget World",
+      location: "Uptown",
+      managerName: "Eva Green"
+    }
+  ])
+  product_insertMany(data: [
+    {
+      id: "770e8400-e29b-41d4-a716-446655440001",
+      name: "Laptop",
+      price: 999.99,
+      stockQuantity: 10,
+      sku: "LT-001",
+      category: "Electronics",
+      storeId: "660e8400-e29b-41d4-a716-446655440001"
+    },
+    {
+      id: "770e8400-e29b-41d4-a716-446655440002",
+      name: "Headphones",
+      price: 59.99,
+      stockQuantity: 50,
+      sku: "HP-002",
+      category: "Audio",
+      storeId: "660e8400-e29b-41d4-a716-446655440001"
+    },
+    {
+      id: "770e8400-e29b-41d4-a716-446655440003",
+      name: "Smartwatch",
+      price: 199.99,
+      stockQuantity: 25,
+      sku: "SW-003",
+      category: "Electronics",
+      storeId: "660e8400-e29b-41d4-a716-446655440002"
+    }
+  ])
+  transaction_insertMany(data: [
+    {
+      id: "880e8400-e29b-41d4-a716-446655440001",
+      timestamp: "2023-10-01T10:00:00Z",
+      totalAmount: 1059.98,
+      status: "COMPLETED",
+      customerId: "550e8400-e29b-41d4-a716-446655440001",
+      storeId: "660e8400-e29b-41d4-a716-446655440001"
+    },
+    {
+      id: "880e8400-e29b-41d4-a716-446655440002",
+      timestamp: "2023-10-02T14:30:00Z",
+      totalAmount: 199.99,
+      status: "PENDING",
+      customerId: "550e8400-e29b-41d4-a716-446655440002",
+      storeId: "660e8400-e29b-41d4-a716-446655440002"
+    }
+  ])
+  transactionItem_insertMany(data: [
+    {
+      id: "990e8400-e29b-41d4-a716-446655440001",
+      quantity: 1,
+      priceAtSale: 999.99,
+      transactionId: "880e8400-e29b-41d4-a716-446655440001",
+      productId: "770e8400-e29b-41d4-a716-446655440001"
+    },
+    {
+      id: "990e8400-e29b-41d4-a716-446655440002",
+      quantity: 1,
+      priceAtSale: 59.99,
+      transactionId: "880e8400-e29b-41d4-a716-446655440001",
+      productId: "770e8400-e29b-41d4-a716-446655440002"
+    },
+    {
+      id: "990e8400-e29b-41d4-a716-446655440003",
+      quantity: 1,
+      priceAtSale: 199.99,
+      transactionId: "880e8400-e29b-41d4-a716-446655440002",
+      productId: "770e8400-e29b-41d4-a716-446655440003"
+    }
+  ])
+}

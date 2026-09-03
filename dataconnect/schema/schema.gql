@@ -1,0 +1,37 @@
+type Store @table {
+  name: String!
+  location: String!
+  managerName: String
+}
+
+type Product @table {
+  name: String!
+  price: Float!
+  stockQuantity: Int!
+  description: String
+  sku: String
+  category: String
+  store: Store
+}
+
+type Customer @table {
+  name: String!
+  email: String
+  phone: String
+  totalSpent: Float
+}
+
+type Transaction @table {
+  timestamp: Timestamp!
+  totalAmount: Float!
+  status: String!
+  customer: Customer
+  store: Store
+}
+
+type TransactionItem @table {
+  quantity: Int!
+  priceAtSale: Float!
+  transaction: Transaction!
+  product: Product!
+}

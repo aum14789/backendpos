@@ -1,0 +1,7 @@
+{
+  "cloudWsUrl": "ws://localhost:8080/ws",
+  "cloudHttpUrl": "http://localhost:8080",
+  "branchId": "branch-001",
+  "activeKey": "SUN-BRANCH-001-KEY",
+  "pollInterval": "30s"
+}
