@@ -1,0 +1,45 @@
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: sunpos-backend
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/neondb}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 900000
+      connection-test-query: SELECT 1
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+sunpos:
+  seeder:
+    enabled: ${SEEDER_ENABLED:false}
+  jwt:
+    # Uses JWT_SECRET env var if present, with a secure development fallback
+    secret: ${JWT_SECRET:sunpos_super_secret_jwt_key_2026_min_64_characters_long_for_hs512_security}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000} # 24 hours
+  line:
+    enabled: ${LINE_ENABLED:false}
+    channel-id: ${LINE_CHANNEL_ID:1657890123}
+    channel-secret: ${LINE_CHANNEL_SECRET:secret_key_sample_123}
+    channel-access-token: ${LINE_CHANNEL_ACCESS_TOKEN:access_token_sample_abc123}
+    mock-mode: ${LINE_MOCK_MODE:true}
+
+logging:
+  level:
+    root: INFO
+    com.sunpos.backend: DEBUG
+    org.springframework.security: INFO
+    org.flywaydb: INFO
