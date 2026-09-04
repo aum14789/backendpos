@@ -248,3 +248,13 @@ data class DeviceIdentityDto(
     val cloudApiUrl: String? = null
 )
 
+data class DeviceValidationDto(
+    val isValid: Boolean = false,
+    val branchId: String? = null,
+    val branchName: String? = null,
+    val branchCode: String? = null,
+    val deviceCode: String? = null,
+    val reason: String? = null
+)
+
+

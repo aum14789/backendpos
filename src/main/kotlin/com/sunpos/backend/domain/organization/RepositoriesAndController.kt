@@ -421,14 +421,21 @@ class OrganizationController(
             companyId = "comp-001"
             companyName = "SunPOS Restaurant Group Co., Ltd."
         } else {
-            // Fallback for standard SUN- format
-            branchId = "branch-001"
-            branchCode = "BR-01"
-            branchName = "Sukhumvit Main Branch (สุขุมวิท)"
-            deviceCode = "POS-01"
-            deviceName = "Main POS Terminal #1"
-            companyId = "comp-001"
-            companyName = "SunPOS Restaurant Group Co., Ltd."
+            // Check in branchRepository for activationCode
+            val branchByCode = branchRepository.findAll().firstOrNull {
+                it.activationCode?.trim()?.equals(code, ignoreCase = true) == true
+            }
+            if (branchByCode != null) {
+                branchId = branchByCode.id
+                branchName = branchByCode.name
+                branchCode = branchByCode.code
+                deviceCode = "POS-01"
+                deviceName = "Main POS Terminal (${branchByCode.name})"
+                companyId = "comp-001"
+                companyName = "SunPOS Restaurant Group Co., Ltd."
+            } else {
+                throw IllegalArgumentException("รหัสเปิดใช้งาน '$code' ไม่ถูกต้อง หรือไม่ตรงกับสาขาใดในระบบ กรุณาตรวจสอบรหัสจากระบบ Backoffice")
+            }
         }
 
         val generatedDeviceId = "pos-$branchId-${deviceCode.lowercase()}-${now.toEpochMilli() % 10000}"
@@ -474,6 +481,64 @@ class OrganizationController(
         )
 
         return ApiResponse.success(identity, "เปิดใช้งานเครื่อง POS สำหรับ '$branchName' สำเร็จ")
+    }
+
+    @GetMapping("/devices/validate")
+    fun validateDevice(
+        @RequestParam activationCode: String,
+        @RequestParam(required = false) branchId: String?,
+        @RequestParam(required = false) deviceId: String?
+    ): ApiResponse<DeviceValidationDto> {
+        val cleanCode = activationCode.trim()
+        if (cleanCode.isBlank()) {
+            return ApiResponse.success(DeviceValidationDto(isValid = false, reason = "รหัส Activation Code ว่างเปล่า"))
+        }
+
+        val upperCode = cleanCode.uppercase()
+
+        // 1. Check branchRepository
+        val branchByCode = branchRepository.findAll().firstOrNull {
+            it.activationCode?.trim()?.equals(cleanCode, ignoreCase = true) == true
+        }
+
+        // 2. Check activationCodeRepository
+        val optRecord = activationCodeRepository.findByCode(cleanCode)
+            .or { activationCodeRepository.findByCode(upperCode) }
+
+        val matchedBranch = branchByCode ?: if (optRecord.isPresent) {
+            branchRepository.findById(optRecord.get().branchId).orElse(null)
+        } else if (upperCode.startsWith("DEV-")) {
+            Branch(id = "branch-001", name = "Sukhumvit Main Branch (สุขุมวิท)", code = "BR-01")
+        } else null
+
+        if (matchedBranch == null) {
+            return ApiResponse.success(
+                DeviceValidationDto(
+                    isValid = false,
+                    reason = "รหัสเปิดใช้งาน '$cleanCode' ไม่ตรงกับสาขาใดในระบบแล้ว กรุณาเปิดใช้งานใหม่"
+                )
+            )
+        }
+
+        // If branchId was provided, verify it still matches
+        if (!branchId.isNullOrBlank() && matchedBranch.id != branchId) {
+            return ApiResponse.success(
+                DeviceValidationDto(
+                    isValid = false,
+                    reason = "รหัสเปิดใช้งานถูกเปลี่ยนไปใช้กับสาขาอื่นแล้ว (เครื่อง: $branchId, ปัจจุบัน: ${matchedBranch.name})"
+                )
+            )
+        }
+
+        return ApiResponse.success(
+            DeviceValidationDto(
+                isValid = true,
+                branchId = matchedBranch.id,
+                branchName = matchedBranch.name,
+                branchCode = matchedBranch.code,
+                deviceCode = "POS-01"
+            )
+        )
     }
 }
 
