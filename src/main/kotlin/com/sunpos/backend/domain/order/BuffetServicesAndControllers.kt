@@ -27,6 +27,17 @@ class BuffetPromotionRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<Buf
         val allActive = findByField("status", BuffetPromotionStatus.ACTIVE.name)
         return allActive.filter { it.branchId == branchId || (it.branchId.isNullOrBlank() && it.brandId == brandId) }
     }
+
+    fun findByBrandId(brandId: String): List<BuffetPromotion> =
+        findByField("brandId", brandId)
+
+    fun findByBranchId(branchId: String): List<BuffetPromotion> =
+        findByField("branchId", branchId)
+
+    fun findPromotionsForBranch(brandId: String, branchId: String, status: BuffetPromotionStatus? = null): List<BuffetPromotion> {
+        val all = if (status != null) findByField("status", status.name) else findAll()
+        return all.filter { it.branchId == branchId || (it.branchId.isNullOrBlank() && it.brandId == brandId) }
+    }
 }
 
 @Repository
@@ -89,19 +100,22 @@ class BuffetService(
     /**
      * Get active buffet promotions available to a brand or branch (inherits from brand).
      */
-    fun listPromotions(brandId: String? = null, branchId: String? = null): List<BuffetPromotionResponseDto> {
+    fun listPromotions(brandId: String? = null, branchId: String? = null, status: BuffetPromotionStatus? = null): List<BuffetPromotionResponseDto> {
         val promos = if (!branchId.isNullOrBlank()) {
             val branch = branchRepository.findById(branchId).orElse(null)
             val bBrandId = branch?.brandId ?: brandId ?: ""
             if (bBrandId.isNotBlank()) {
-                promotionRepository.findActivePromotionsForBranch(bBrandId, branchId)
+                promotionRepository.findPromotionsForBranch(bBrandId, branchId, status)
             } else {
-                promotionRepository.findByBranchIdAndStatus(branchId, BuffetPromotionStatus.ACTIVE)
+                if (status != null) promotionRepository.findByBranchIdAndStatus(branchId, status)
+                else promotionRepository.findByBranchId(branchId)
             }
         } else if (!brandId.isNullOrBlank()) {
-            promotionRepository.findByBrandIdAndStatus(brandId, BuffetPromotionStatus.ACTIVE)
+            if (status != null) promotionRepository.findByBrandIdAndStatus(brandId, status)
+            else promotionRepository.findByBrandId(brandId)
         } else {
-            promotionRepository.findAll().filter { it.status == BuffetPromotionStatus.ACTIVE }
+            if (status != null) promotionRepository.findAll().filter { it.status == status }
+            else promotionRepository.findAll()
         }
 
         return promos.map { p ->
@@ -382,9 +396,10 @@ class BuffetController(
     @GetMapping("/promotions")
     fun listPromotions(
         @RequestParam(required = false) branchId: String? = null,
-        @RequestParam(required = false) brandId: String? = null
+        @RequestParam(required = false) brandId: String? = null,
+        @RequestParam(required = false) status: BuffetPromotionStatus? = null
     ): ApiResponse<List<BuffetPromotionResponseDto>> {
-        return ApiResponse.success(buffetService.listPromotions(brandId, branchId))
+        return ApiResponse.success(buffetService.listPromotions(brandId, branchId, status))
     }
 
     @GetMapping("/promotions/{promotionId}/menu-items")
