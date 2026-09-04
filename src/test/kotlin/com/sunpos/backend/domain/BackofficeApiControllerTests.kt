@@ -70,10 +70,12 @@ class BackofficeApiControllerTests {
         comboDefinitionRepository = mock(ComboDefinitionRepository::class.java)
         comboGroupRepository = mock(ComboGroupRepository::class.java)
         comboChoiceRepository = mock(ComboChoiceRepository::class.java)
+        val menuItemBranchRepository = mock(MenuItemBranchRepository::class.java)
+        val jdbcTemplate = mock(org.springframework.jdbc.core.JdbcTemplate::class.java)
         catalogService = CatalogService(
             menuCategoryRepository, menuItemRepository, modifierGroupRepository,
             modifierRepository, menuItemModifierGroupRepository, comboDefinitionRepository,
-            comboGroupRepository, comboChoiceRepository
+            comboGroupRepository, comboChoiceRepository, menuItemBranchRepository, jdbcTemplate
         )
         catalogController = CatalogController(catalogService)
 
