@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.Optional
+import java.util.UUID
 
 @Repository
 class MenuCategoryRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<MenuCategory>(jdbcTemplate, "menu_categories", MenuCategory::class.java) {
@@ -98,11 +99,43 @@ class CatalogService(
         }
     }
 
+    fun checkIdUnique(id: String, excludeId: String? = null) {
+        val trimmed = id.trim()
+        if (trimmed.isBlank()) return
+        if (trimmed.equals(excludeId?.trim(), ignoreCase = true)) return
+        if (itemRepository.existsById(trimmed)) {
+            throw IllegalArgumentException("รหัสสินค้า (ID) '$trimmed' มีอยู่ในระบบแล้ว ห้ามใช้ ID ซ้ำกันโดยเด็ดขาด")
+        }
+    }
+
+    fun isNameUnique(name: String, excludeId: String? = null): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return true
+        val all = itemRepository.findAll()
+        return all.none { it.name.trim().equals(trimmed, ignoreCase = true) && it.id != excludeId }
+    }
+
+    fun isIdUnique(id: String, excludeId: String? = null): Boolean {
+        val trimmed = id.trim()
+        if (trimmed.isBlank()) return true
+        if (trimmed.equals(excludeId?.trim(), ignoreCase = true)) return true
+        return !itemRepository.existsById(trimmed)
+    }
+
     @Transactional
     fun createMenuItem(dto: MenuItemCreateDto): MenuItemResponseDto {
         checkNameUnique(dto.name)
+        if (!dto.id.isNullOrBlank()) {
+            checkIdUnique(dto.id)
+        }
+
+        val assignedId = dto.id?.trim()?.ifBlank { null } ?: UUID.randomUUID().toString()
+        if (itemRepository.existsById(assignedId)) {
+            throw IllegalArgumentException("รหัสสินค้า (ID) '$assignedId' มีอยู่ในระบบแล้ว ห้ามใช้ ID ซ้ำกันโดยเด็ดขาด")
+        }
 
         val item = MenuItem(
+            id = assignedId,
             branchId = dto.branchId,
             brandId = dto.brandId,
             categoryId = dto.categoryId,
@@ -513,6 +546,24 @@ class CatalogController(
         @RequestParam(required = false) categoryId: String?
     ): ApiResponse<List<MenuItemResponseDto>> {
         return ApiResponse.success(catalogService.listMenuItems(branchId, categoryId))
+    }
+
+    @GetMapping("/items/check-name", "/menu-items/check-name")
+    fun checkName(
+        @RequestParam name: String,
+        @RequestParam(required = false) excludeId: String?
+    ): ApiResponse<Map<String, Boolean>> {
+        val isUnique = catalogService.isNameUnique(name, excludeId)
+        return ApiResponse.success(mapOf("isUnique" to isUnique))
+    }
+
+    @GetMapping("/items/check-id", "/menu-items/check-id")
+    fun checkId(
+        @RequestParam id: String,
+        @RequestParam(required = false) excludeId: String?
+    ): ApiResponse<Map<String, Boolean>> {
+        val isUnique = catalogService.isIdUnique(id, excludeId)
+        return ApiResponse.success(mapOf("isUnique" to isUnique))
     }
 
     @GetMapping("/items/{id}", "/menu-items/{id}")

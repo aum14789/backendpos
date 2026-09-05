@@ -149,6 +149,7 @@ data class ComboGroupCreateDto(
 )
 
 data class MenuItemCreateDto(
+    val id: String? = null,
     val branchId: String = "",
     val brandId: String? = null,
     val categoryId: String = "",
