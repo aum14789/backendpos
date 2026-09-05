@@ -5,6 +5,7 @@ import com.sunpos.backend.common.JdbcRepository
 import org.springframework.jdbc.core.JdbcTemplate
 import com.sunpos.backend.domain.catalog.MenuItem
 import com.sunpos.backend.domain.catalog.MenuItemRepository
+import com.sunpos.backend.domain.catalog.MenuCategoryRepository
 import com.sunpos.backend.domain.organization.BranchRepository
 import org.springframework.stereotype.Repository
 import org.springframework.stereotype.Service
@@ -27,10 +28,24 @@ class BuffetPromotionRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<Buf
         val allActive = findByField("status", BuffetPromotionStatus.ACTIVE.name)
         return allActive.filter { it.branchId == branchId || (it.branchId.isNullOrBlank() && it.brandId == brandId) }
     }
+
+    fun findByBrandId(brandId: String): List<BuffetPromotion> =
+        findByField("brandId", brandId)
+
+    fun findByBranchId(branchId: String): List<BuffetPromotion> =
+        findByField("branchId", branchId)
+
+    fun findPromotionsForBranch(brandId: String, branchId: String, status: BuffetPromotionStatus? = null): List<BuffetPromotion> {
+        val all = if (status != null) findByField("status", status.name) else findAll()
+        return all.filter { it.branchId == branchId || (it.branchId.isNullOrBlank() && it.brandId == brandId) }
+    }
 }
 
 @Repository
 class BuffetPromotionMenuItemRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<BuffetPromotionMenuItem>(jdbcTemplate, "buffet_promotion_menu_items", BuffetPromotionMenuItem::class.java) {
+    fun findByPromotionId(promotionId: String): List<BuffetPromotionMenuItem> =
+        findByField("promotionId", promotionId)
+
     fun findMenuItemIdsByPromotionId(promotionId: String): List<String> =
         findByField("promotionId", promotionId).map { it.menuItemId }
 
@@ -81,7 +96,8 @@ class BuffetService(
     private val tierMenuItemRepository: BuffetTierMenuItemRepository,
     private val sessionRepository: BuffetSessionRepository,
     private val branchRepository: BranchRepository,
-    private val menuItemRepository: MenuItemRepository
+    private val menuItemRepository: MenuItemRepository,
+    private val categoryRepository: MenuCategoryRepository? = null
 ) {
 
     // ── Multi-Brand Buffet Promotion APIs ──
@@ -89,19 +105,22 @@ class BuffetService(
     /**
      * Get active buffet promotions available to a brand or branch (inherits from brand).
      */
-    fun listPromotions(brandId: String? = null, branchId: String? = null): List<BuffetPromotionResponseDto> {
+    fun listPromotions(brandId: String? = null, branchId: String? = null, status: BuffetPromotionStatus? = null): List<BuffetPromotionResponseDto> {
         val promos = if (!branchId.isNullOrBlank()) {
             val branch = branchRepository.findById(branchId).orElse(null)
             val bBrandId = branch?.brandId ?: brandId ?: ""
             if (bBrandId.isNotBlank()) {
-                promotionRepository.findActivePromotionsForBranch(bBrandId, branchId)
+                promotionRepository.findPromotionsForBranch(bBrandId, branchId, status)
             } else {
-                promotionRepository.findByBranchIdAndStatus(branchId, BuffetPromotionStatus.ACTIVE)
+                if (status != null) promotionRepository.findByBranchIdAndStatus(branchId, status)
+                else promotionRepository.findByBranchId(branchId)
             }
         } else if (!brandId.isNullOrBlank()) {
-            promotionRepository.findByBrandIdAndStatus(brandId, BuffetPromotionStatus.ACTIVE)
+            if (status != null) promotionRepository.findByBrandIdAndStatus(brandId, status)
+            else promotionRepository.findByBrandId(brandId)
         } else {
-            promotionRepository.findAll().filter { it.status == BuffetPromotionStatus.ACTIVE }
+            if (status != null) promotionRepository.findAll().filter { it.status == status }
+            else promotionRepository.findAll()
         }
 
         return promos.map { p ->
@@ -114,12 +133,52 @@ class BuffetService(
         listPromotions(null, branchId)
 
     /**
-     * Get full MenuItem objects allowed under a specific buffet promotion.
+     * Get full MenuItem objects allowed under a specific buffet promotion with category and pricing details.
      */
-    fun getMenuItemsForPromotion(promotionId: String): List<MenuItem> {
-        val itemIds = promotionMenuItemRepository.findMenuItemIdsByPromotionId(promotionId)
-        if (itemIds.isEmpty()) return emptyList()
-        return menuItemRepository.findAllById(itemIds).filter { it.isActive }
+    fun getMenuItemsForPromotion(promotionId: String): List<BuffetPromotionMenuItemDetailDto> {
+        val links = promotionMenuItemRepository.findByPromotionId(promotionId)
+        if (links.isEmpty()) return emptyList()
+        val itemIds = links.map { it.menuItemId }
+        val items = menuItemRepository.findAllById(itemIds).filter { it.isActive }.associateBy { it.id }
+        val categoryMap = categoryRepository?.findAll()?.associateBy { it.id } ?: emptyMap()
+
+        return links.mapNotNull { link ->
+            val item = items[link.menuItemId] ?: return@mapNotNull null
+            val category = categoryMap[item.categoryId]
+            BuffetPromotionMenuItemDetailDto(
+                id = item.id,
+                promotionId = promotionId,
+                menuItemId = item.id,
+                name = item.name,
+                categoryId = item.categoryId,
+                categoryName = category?.name ?: "ทั่วไป (General)",
+                basePrice = item.basePrice,
+                imageUrl = item.imageUrl,
+                isFree = link.isFree,
+                additionalPrice = link.additionalPrice
+            )
+        }
+    }
+
+    @Transactional
+    fun updatePromotionMenuItems(
+        promotionId: String,
+        dto: UpdateBuffetPromotionMenuItemsDto
+    ): List<BuffetPromotionMenuItemDetailDto> {
+        promotionRepository.findById(promotionId)
+            .orElseThrow { IllegalArgumentException("Buffet promotion not found: $promotionId") }
+
+        promotionMenuItemRepository.deleteByIdPromotionId(promotionId)
+        for (item in dto.items) {
+            val link = BuffetPromotionMenuItem(
+                promotionId = promotionId,
+                menuItemId = item.menuItemId,
+                isFree = item.isFree,
+                additionalPrice = item.additionalPrice
+            )
+            promotionMenuItemRepository.save(link)
+        }
+        return getMenuItemsForPromotion(promotionId)
     }
 
     /**
@@ -382,14 +441,26 @@ class BuffetController(
     @GetMapping("/promotions")
     fun listPromotions(
         @RequestParam(required = false) branchId: String? = null,
-        @RequestParam(required = false) brandId: String? = null
+        @RequestParam(required = false) brandId: String? = null,
+        @RequestParam(required = false) status: BuffetPromotionStatus? = null
     ): ApiResponse<List<BuffetPromotionResponseDto>> {
-        return ApiResponse.success(buffetService.listPromotions(brandId, branchId))
+        return ApiResponse.success(buffetService.listPromotions(brandId, branchId, status))
     }
 
     @GetMapping("/promotions/{promotionId}/menu-items")
-    fun getPromotionMenuItems(@PathVariable promotionId: String): ApiResponse<List<MenuItem>> {
+    fun getPromotionMenuItems(@PathVariable promotionId: String): ApiResponse<List<BuffetPromotionMenuItemDetailDto>> {
         return ApiResponse.success(buffetService.getMenuItemsForPromotion(promotionId))
+    }
+
+    @PutMapping("/promotions/{promotionId}/menu-items")
+    fun updatePromotionMenuItems(
+        @PathVariable promotionId: String,
+        @RequestBody dto: UpdateBuffetPromotionMenuItemsDto
+    ): ApiResponse<List<BuffetPromotionMenuItemDetailDto>> {
+        return ApiResponse.success(
+            buffetService.updatePromotionMenuItems(promotionId, dto),
+            "Buffet promotion menu items updated successfully"
+        )
     }
 
     @PostMapping("/promotions")

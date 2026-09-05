@@ -34,14 +34,46 @@ data class BuffetPromotionMenuItemId(
 class BuffetPromotionMenuItem(
     val id: String = UUID.randomUUID().toString(),
     var promotionId: String = "",
-    var menuItemId: String = ""
+    var menuItemId: String = "",
+    var isFree: Boolean = true,
+    var additionalPrice: BigDecimal = BigDecimal.ZERO
 ) {
-    constructor(promotionId: String, menuItemId: String) : this(
+    constructor(
+        promotionId: String,
+        menuItemId: String,
+        isFree: Boolean = true,
+        additionalPrice: BigDecimal = BigDecimal.ZERO
+    ) : this(
         id = "${promotionId}_$menuItemId",
         promotionId = promotionId,
-        menuItemId = menuItemId
+        menuItemId = menuItemId,
+        isFree = isFree,
+        additionalPrice = additionalPrice
     )
 }
+
+data class BuffetPromotionItemLinkDto(
+    val menuItemId: String = "",
+    val isFree: Boolean = true,
+    val additionalPrice: BigDecimal = BigDecimal.ZERO
+)
+
+data class UpdateBuffetPromotionMenuItemsDto(
+    val items: List<BuffetPromotionItemLinkDto> = emptyList()
+)
+
+data class BuffetPromotionMenuItemDetailDto(
+    val id: String = "",
+    val promotionId: String = "",
+    val menuItemId: String = "",
+    val name: String = "",
+    val categoryId: String = "",
+    val categoryName: String = "",
+    val basePrice: BigDecimal = BigDecimal.ZERO,
+    val imageUrl: String? = null,
+    val isFree: Boolean = true,
+    val additionalPrice: BigDecimal = BigDecimal.ZERO
+)
 
 class BuffetPromotionTier(
     val id: String = UUID.randomUUID().toString(),

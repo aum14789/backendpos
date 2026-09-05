@@ -110,6 +110,7 @@ class SecurityConfig(
                         "/api/v1/auth/refresh",
                         "/api/v1/organization/branches/resolve-current",
                         "/api/v1/organization/devices/activate",
+                        "/api/v1/organization/devices/validate",
                         "/api/v1/organization/activation-codes/**",
                         "/api/v1/sync/**",
                         "/sync/**",
