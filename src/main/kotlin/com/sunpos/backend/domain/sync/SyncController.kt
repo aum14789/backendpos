@@ -232,7 +232,8 @@ class SyncService(
     private val userRepository: com.sunpos.backend.domain.identity.UserRepository? = null,
     private val userRoleRepository: com.sunpos.backend.domain.identity.UserRoleRepository? = null,
     private val rolePermissionRepository: com.sunpos.backend.domain.identity.RolePermissionRepository? = null,
-    private val permissionRepository: com.sunpos.backend.domain.identity.PermissionRepository? = null
+    private val permissionRepository: com.sunpos.backend.domain.identity.PermissionRepository? = null,
+    private val menuItemBranchRepository: com.sunpos.backend.domain.catalog.MenuItemBranchRepository? = null
 ) {
     private val log = LoggerFactory.getLogger(SyncService::class.java)
 
@@ -602,17 +603,36 @@ class SyncService(
             )
         }
 
-        // 3. Menu Items
-        val rawMenuItems = menuItemRepository.findByBranchId(branchId)
+        // 3. Menu Items (Allocated & Active for this Branch)
+        val allBranchLinks = if (menuItemBranchRepository != null) {
+            menuItemBranchRepository.findByBranchId(branchId)
+        } else emptyList()
+
+        val rawMenuItems: List<MenuItem> = if (allBranchLinks.isNotEmpty()) {
+            val activeItemIds = allBranchLinks.filter { it.isActive }.map { it.menuItemId }.toSet()
+            val branchDirectItems = menuItemRepository.findByBranchId(branchId).filter { it.isActive }
+            val linkedItems = if (activeItemIds.isNotEmpty()) {
+                menuItemRepository.findAll().filter { activeItemIds.contains(it.id) && it.isActive }
+            } else {
+                emptyList()
+            }
+            (linkedItems + branchDirectItems).distinctBy { it.id }
+        } else {
+            menuItemRepository.findByBranchId(branchId).filter { it.isActive }
+        }
+
+        val priceOverrideMap = allBranchLinks.associate { it.menuItemId to it.priceOverride }
+
         val menuItems = rawMenuItems.map { m ->
+            val effectivePrice = priceOverrideMap[m.id] ?: m.basePrice
             SyncMenuItemDto(
                 itemId = m.id,
-                branchId = m.branchId.ifBlank { branchId },
+                branchId = branchId,
                 categoryId = m.categoryId,
                 name = m.name,
                 description = m.description,
                 sku = m.sku,
-                basePrice = m.basePrice.multiply(BigDecimal("100")).toLong(),
+                basePrice = effectivePrice.multiply(BigDecimal("100")).toLong(),
                 availability = m.availability,
                 imageUrl = m.imageUrl,
                 sortOrder = m.sortOrder,

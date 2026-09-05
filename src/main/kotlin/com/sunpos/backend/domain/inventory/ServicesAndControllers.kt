@@ -99,7 +99,16 @@ class InventoryService(
 
     fun listInventoryItems(): List<InventoryItem> = itemRepository.findAll()
 
-    fun createInventoryItem(item: InventoryItem): InventoryItem = itemRepository.save(item)
+    fun createInventoryItem(item: InventoryItem): InventoryItem {
+        if (item.id.isNotBlank() && itemRepository.existsById(item.id)) {
+            throw IllegalArgumentException("รหัสวัตถุดิบ (ID) '${item.id}' มีอยู่ในระบบแล้ว ห้ามใช้ ID ซ้ำกันโดยเด็ดขาด")
+        }
+        val existingBySku = itemRepository.findBySku(item.sku)
+        if (existingBySku.isPresent) {
+            throw IllegalArgumentException("รหัส SKU '${item.sku}' มีอยู่ในระบบแล้ว ห้ามใช้ SKU ซ้ำกัน")
+        }
+        return itemRepository.save(item)
+    }
 
     fun updateInventoryItem(id: String, updated: InventoryItem): InventoryItem {
         val existing = itemRepository.findById(id).orElseGet {

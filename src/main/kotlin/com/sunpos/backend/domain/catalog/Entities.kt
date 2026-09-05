@@ -149,6 +149,7 @@ data class ComboGroupCreateDto(
 )
 
 data class MenuItemCreateDto(
+    val id: String? = null,
     val branchId: String = "",
     val brandId: String? = null,
     val categoryId: String = "",
@@ -232,4 +233,21 @@ data class ComboChoiceResponseDto(
     val priceOverride: BigDecimal? = null,
     val surcharge: BigDecimal = BigDecimal.ZERO,
     val isFree: Boolean = false
+)
+
+data class ItemBranchAllocationEntry(
+    val menuItemId: String = "",
+    val brandId: String = "",
+    val branchIds: List<String> = emptyList()
+)
+
+data class BatchBranchAllocationRequest(
+    val branchIdsScope: List<String> = emptyList(),
+    val allocations: List<ItemBranchAllocationEntry> = emptyList(),
+    val brandAllocations: Map<String, List<String>> = emptyMap() // itemId -> list of brandIds
+)
+
+data class BranchAllocationsResponse(
+    val allocations: Map<String, List<String>> = emptyMap(),
+    val brandAllocations: Map<String, List<String>> = emptyMap()
 )

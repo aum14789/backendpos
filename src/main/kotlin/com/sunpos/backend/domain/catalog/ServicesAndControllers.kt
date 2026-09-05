@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.Optional
+import java.util.UUID
 
 @Repository
 class MenuCategoryRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<MenuCategory>(jdbcTemplate, "menu_categories", MenuCategory::class.java) {
@@ -98,11 +99,43 @@ class CatalogService(
         }
     }
 
+    fun checkIdUnique(id: String, excludeId: String? = null) {
+        val trimmed = id.trim()
+        if (trimmed.isBlank()) return
+        if (trimmed.equals(excludeId?.trim(), ignoreCase = true)) return
+        if (itemRepository.existsById(trimmed)) {
+            throw IllegalArgumentException("รหัสสินค้า (ID) '$trimmed' มีอยู่ในระบบแล้ว ห้ามใช้ ID ซ้ำกันโดยเด็ดขาด")
+        }
+    }
+
+    fun isNameUnique(name: String, excludeId: String? = null): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return true
+        val all = itemRepository.findAll()
+        return all.none { it.name.trim().equals(trimmed, ignoreCase = true) && it.id != excludeId }
+    }
+
+    fun isIdUnique(id: String, excludeId: String? = null): Boolean {
+        val trimmed = id.trim()
+        if (trimmed.isBlank()) return true
+        if (trimmed.equals(excludeId?.trim(), ignoreCase = true)) return true
+        return !itemRepository.existsById(trimmed)
+    }
+
     @Transactional
     fun createMenuItem(dto: MenuItemCreateDto): MenuItemResponseDto {
         checkNameUnique(dto.name)
+        if (!dto.id.isNullOrBlank()) {
+            checkIdUnique(dto.id)
+        }
+
+        val assignedId = dto.id?.trim()?.ifBlank { null } ?: UUID.randomUUID().toString()
+        if (itemRepository.existsById(assignedId)) {
+            throw IllegalArgumentException("รหัสสินค้า (ID) '$assignedId' มีอยู่ในระบบแล้ว ห้ามใช้ ID ซ้ำกันโดยเด็ดขาด")
+        }
 
         val item = MenuItem(
+            id = assignedId,
             branchId = dto.branchId,
             brandId = dto.brandId,
             categoryId = dto.categoryId,
@@ -426,6 +459,69 @@ class CatalogService(
     fun createModifierGroup(group: ModifierGroup): ModifierGroup = modifierGroupRepository.save(group)
 
     fun createModifier(modifier: Modifier): Modifier = modifierRepository.save(modifier)
+
+    fun getBranchAllocations(): BranchAllocationsResponse {
+        val allBranches = menuItemBranchRepository.findAll()
+        val itemBranchMap = mutableMapOf<String, MutableList<String>>()
+        val itemBrandMap = mutableMapOf<String, MutableSet<String>>()
+
+        for (b in allBranches) {
+            if (b.isActive && b.branchId.isNotBlank()) {
+                itemBranchMap.computeIfAbsent(b.menuItemId) { mutableListOf() }.add(b.branchId)
+            }
+            if (b.brandId.isNotBlank()) {
+                itemBrandMap.computeIfAbsent(b.menuItemId) { mutableSetOf() }.add(b.brandId)
+            }
+        }
+        return BranchAllocationsResponse(
+            allocations = itemBranchMap,
+            brandAllocations = itemBrandMap.mapValues { it.value.toList() }
+        )
+    }
+
+    @Transactional
+    fun saveBatchBranchAllocations(request: BatchBranchAllocationRequest): BranchAllocationsResponse {
+        val branchScope = if (request.branchIdsScope.isNotEmpty()) {
+            request.branchIdsScope.toSet()
+        } else {
+            request.allocations.flatMap { it.branchIds }.toSet()
+        }
+
+        for (entry in request.allocations) {
+            val itemId = entry.menuItemId
+            val brandId = entry.brandId
+            val activeBranchSet = entry.branchIds.toSet()
+
+            for (branchId in branchScope) {
+                val isActive = activeBranchSet.contains(branchId)
+                jdbcTemplate.update(
+                    """
+                    INSERT INTO menu_item_branches (id, menu_item_id, brand_id, branch_id, is_active, created_at)
+                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (menu_item_id, branch_id) DO UPDATE 
+                    SET is_active = EXCLUDED.is_active, 
+                        brand_id = CASE WHEN EXCLUDED.brand_id != '' THEN EXCLUDED.brand_id ELSE menu_item_branches.brand_id END
+                    """.trimIndent(),
+                    "mib-${itemId}-${branchId}",
+                    itemId,
+                    brandId,
+                    branchId,
+                    isActive
+                )
+            }
+        }
+
+        // Save brand allocations if provided
+        if (request.brandAllocations.isNotEmpty()) {
+            for ((itemId, brandIds) in request.brandAllocations) {
+                if (brandIds.isNotEmpty()) {
+                    jdbcTemplate.update("UPDATE menu_items SET brand_id = ? WHERE id = ?", brandIds.first(), itemId)
+                }
+            }
+        }
+
+        return getBranchAllocations()
+    }
 }
 
 @RestController
@@ -450,6 +546,24 @@ class CatalogController(
         @RequestParam(required = false) categoryId: String?
     ): ApiResponse<List<MenuItemResponseDto>> {
         return ApiResponse.success(catalogService.listMenuItems(branchId, categoryId))
+    }
+
+    @GetMapping("/items/check-name", "/menu-items/check-name")
+    fun checkName(
+        @RequestParam name: String,
+        @RequestParam(required = false) excludeId: String?
+    ): ApiResponse<Map<String, Boolean>> {
+        val isUnique = catalogService.isNameUnique(name, excludeId)
+        return ApiResponse.success(mapOf("isUnique" to isUnique))
+    }
+
+    @GetMapping("/items/check-id", "/menu-items/check-id")
+    fun checkId(
+        @RequestParam id: String,
+        @RequestParam(required = false) excludeId: String?
+    ): ApiResponse<Map<String, Boolean>> {
+        val isUnique = catalogService.isIdUnique(id, excludeId)
+        return ApiResponse.success(mapOf("isUnique" to isUnique))
     }
 
     @GetMapping("/items/{id}", "/menu-items/{id}")
@@ -494,5 +608,16 @@ class CatalogController(
     @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN')")
     fun createModifier(@RequestBody modifier: Modifier): ApiResponse<Modifier> {
         return ApiResponse.success(catalogService.createModifier(modifier), "Modifier created successfully")
+    }
+
+    @GetMapping("/branch-allocations")
+    fun getBranchAllocations(): ApiResponse<BranchAllocationsResponse> {
+        return ApiResponse.success(catalogService.getBranchAllocations())
+    }
+
+    @PostMapping("/branch-allocations/batch")
+    @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('CATALOG_DISTRIBUTE') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun saveBatchBranchAllocations(@RequestBody request: BatchBranchAllocationRequest): ApiResponse<BranchAllocationsResponse> {
+        return ApiResponse.success(catalogService.saveBatchBranchAllocations(request), "Branch allocations saved successfully")
     }
 }

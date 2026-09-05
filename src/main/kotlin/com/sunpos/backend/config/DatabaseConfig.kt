@@ -31,27 +31,34 @@ class DatabaseConfig {
         val envUrl = System.getenv("DATABASE_URL")
         if (!envUrl.isNullOrBlank()) return envUrl
 
-        // 2. Check spring property
-        if (rawDatasourceUrl.isNotBlank()) return rawDatasourceUrl
-
-        // 3. Try reading .env file from working directory
-        try {
-            val envFile = File(".env")
-            if (envFile.exists()) {
-                envFile.readLines().forEach { line ->
-                    val trimmed = line.trim()
-                    if (trimmed.startsWith("DATABASE_URL=")) {
-                        val parsed = trimmed.substringAfter("DATABASE_URL=").trim()
-                        if (parsed.isNotBlank()) return parsed
+        // 2. Try reading .env file from working directory or parent directory
+        val candidateEnvFiles = listOf(File(".env"), File("backend/.env"), File("../.env"))
+        for (envFile in candidateEnvFiles) {
+            try {
+                if (envFile.exists()) {
+                    envFile.readLines().forEach { line ->
+                        val trimmed = line.trim()
+                        if (trimmed.startsWith("DATABASE_URL=")) {
+                            val parsed = trimmed.substringAfter("DATABASE_URL=").trim()
+                            if (parsed.isNotBlank()) {
+                                logger.info("Loaded DATABASE_URL from {}", envFile.absolutePath)
+                                return parsed
+                            }
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                logger.debug("Could not read .env from {}: {}", envFile.path, e.message)
             }
-        } catch (e: Exception) {
-            logger.debug("Could not read .env: {}", e.message)
+        }
+
+        // 3. Check spring property (if not the localhost default)
+        if (rawDatasourceUrl.isNotBlank() && !rawDatasourceUrl.contains("localhost:5432")) {
+            return rawDatasourceUrl
         }
 
         // 4. Default fallback when neither DATABASE_URL env nor .env is present
-        return "jdbc:postgresql://localhost:5432/neondb"
+        return rawDatasourceUrl.ifBlank { "jdbc:postgresql://localhost:5432/neondb" }
     }
 
     @Bean
