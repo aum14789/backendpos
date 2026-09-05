@@ -1,0 +1,59 @@
+﻿Table_Name,Column_Name,Data_Type,Nullable,Default_Value,Description_Thai
+menu_categories,id,VARCHAR(36),NO,PRIMARY KEY,รหัสหมวดหมู่สินค้า
+menu_categories,branch_id,VARCHAR(36),NO,REFERENCES branches(id),รหัสสาขา
+menu_categories,name,VARCHAR(100),NO,,ชื่อหมวดหมู่อาหาร (เช่น เมนูหลัก ชาบู ซีฟู้ด คอมโบเซ็ต)
+menu_categories,description,TEXT,YES,,คำอธิบายหมวดหมู่
+menu_categories,sort_order,INT,YES,0,ลำดับการแสดงผลบนหน้า POS
+menu_categories,is_active,BOOLEAN,YES,TRUE,สถานะเปิดใช้งาน
+menu_items,id,VARCHAR(36),NO,PRIMARY KEY,รหัสสินค้า Finished Goods (FG เช่น fg-001)
+menu_items,branch_id,VARCHAR(36),NO,REFERENCES branches(id),รหัสสาขาเจ้าของเมนู
+menu_items,category_id,VARCHAR(36),NO,REFERENCES menu_categories(id),รหัสหมวดหมู่ของอาหาร
+menu_items,sku,VARCHAR(100),YES,,รหัสสินค้า SKU (เช่น MAIN-001, SEAWT-071)
+menu_items,name,VARCHAR(255),NO,,ชื่อรายการอาหาร FG
+menu_items,description,TEXT,YES,,รายละเอียดเมนูอาหาร
+menu_items,base_price,NUMERIC(15 4),NO,0.0000,ราคาขายปกติ (บาท) รองรับ 0.00 สำหรับรายการฟรี
+menu_items,cost_price,NUMERIC(15 4),YES,0.0000,ต้นทุนมาตรฐานของอาหาร
+menu_items,item_type,VARCHAR(20),NO,'FG',ประเภทสินค้า: FG (สินค้าสำเร็จรูป) หรือ RM (วัตถุดิบ)
+menu_items,special_type,VARCHAR(20),YES,NULL,ประเภทพิเศษ: 'S' สำหรับชุดเซ็ตคอมโบ หรือ NULL เมนูปกติ
+menu_items,is_vat_inclusive,BOOLEAN,NO,TRUE,ราคารวม VAT หรือไม่ (TRUE=รวม VAT FALSE=ไม่รวม มีแท็ก +VAT บน POS)
+menu_items,vat_rate,NUMERIC(5 2),NO,7.00,อัตราภาษีมูลค่าเพิ่ม 7%
+menu_items,allow_decimal_qty,BOOLEAN,NO,FALSE,สั่งเป็นทศนิยมได้หรือไม่ (TRUE=ซีฟู้ด/ชั่งน้ำหนัก กก. FALSE=จำนวนเต็ม)
+menu_items,kitchen_station,VARCHAR(50),YES,'MAIN_KITCHEN',สถานีครัวที่รับออเดอร์ (ครัวหลัก ครัวซีฟู้ด บาร์เครื่องดื่ม)
+menu_items,availability,VARCHAR(50),YES,'AVAILABLE',สถานะการขาย: AVAILABLE พร้อมขาย SOLD_OUT ของหมด
+menu_items,is_active,BOOLEAN,YES,TRUE,เปิดใช้งานเมนูในระบบ
+inventory_items,id,VARCHAR(36),NO,PRIMARY KEY,รหัสวัตถุดิบ Raw Material (RM เช่น rm-beef-wagyu)
+inventory_items,sku,VARCHAR(100),NO,UNIQUE,รหัสสินค้าวัตถุดิบ (เช่น RM-MEAT-001)
+inventory_items,name,VARCHAR(255),NO,,ชื่อวัตถุดิบที่ใช้ในสูตร (เนื้อสด กุ้ง ผัก ซอส แป้ง ฯลฯ)
+inventory_items,category_name,VARCHAR(100),YES,,หมวดหมู่วัตถุดิบ (MEAT, SEAFOOD, PRODUCE, SAUCES ฯลฯ)
+inventory_items,unit,VARCHAR(50),NO,,หน่วยนับหลักในการสั่งซื้อ/สต็อก (kg, L, pack, piece)
+inventory_items,base_unit,VARCHAR(50),NO,,หน่วยฐานย่อยที่ใช้ตัดสต็อกในสูตร (g, ml, piece)
+inventory_items,conversion_factor,NUMERIC(12 4),NO,1.0000,อัตราแปลงหน่วย (เช่น 1 kg = 1000 g)
+inventory_items,min_stock_alert,NUMERIC(12 4),YES,0.0000,จุดแจ้งเตือนสินค้าใกล้หมดสต็อก
+inventory_items,is_active,BOOLEAN,YES,TRUE,สถานะเปิดใช้งานวัตถุดิบ
+recipes,id,VARCHAR(36),NO,PRIMARY KEY,รหัสสูตรอาหาร (เช่น rcp-fg-001)
+recipes,menu_item_id,VARCHAR(36),NO,REFERENCES menu_items(id),รหัสสินค้า FG ที่ผูกกับสูตรนี้
+recipes,name,VARCHAR(255),NO,,ชื่อสูตรอาหารมาตรฐาน
+recipes,version,VARCHAR(50),NO,'v1.0',เวอร์ชันสูตรอาหาร
+recipes,yield_quantity,NUMERIC(12 4),NO,1.0000,ผลผลิตที่ได้ต่อ 1 สูตร (1 portion/จาน)
+recipes,yield_unit,VARCHAR(50),NO,'portion',หน่วยผลผลิต
+recipes,is_active,BOOLEAN,YES,TRUE,สถานะเปิดใช้งานสูตร
+recipe_ingredients,id,VARCHAR(36),NO,PRIMARY KEY,รหัสแถวส่วนผสมในสูตร
+recipe_ingredients,recipe_id,VARCHAR(36),NO,REFERENCES recipes(id),รหัสสูตรอาหารหลัก
+recipe_ingredients,inventory_item_id,VARCHAR(36),NO,REFERENCES inventory_items(id),รหัสวัตถุดิบ RM ที่ต้องใช้ตัดสต็อก
+recipe_ingredients,quantity,NUMERIC(12 4),NO,,ปริมาณวัตถุดิบที่ใช้ต่อ 1 จาน (เช่น 0.12 kg)
+recipe_ingredients,unit,VARCHAR(50),NO,,หน่วยนับของวัตถุดิบที่ใช้ (kg, L, piece)
+recipe_ingredients,waste_percentage,NUMERIC(5 2),YES,0.00,เปอร์เซ็นต์สูญเสียจากการเตรียม (Yield Loss %)
+combo_definitions,id,VARCHAR(36),NO,PRIMARY KEY,รหัสชุดเซ็ตคอมโบ
+combo_definitions,menu_item_id,VARCHAR(36),NO,REFERENCES menu_items(id),รหัสสินค้า FG เมนูชุดเซ็ต (special_type='S')
+combo_definitions,name,VARCHAR(255),NO,,ชื่อชุดคอมโบ (คล้าย KFC Combo Meal)
+combo_groups,id,VARCHAR(36),NO,PRIMARY KEY,รหัสกลุ่มตัวเลือกในชุดคอมโบ
+combo_groups,combo_definition_id,VARCHAR(36),NO,REFERENCES combo_definitions(id),รหัสชุดคอมโบแม่
+combo_groups,name,VARCHAR(100),NO,,ชื่อกลุ่มเลือก (เช่น เลือกจานหลัก เลือกของทานเล่น)
+combo_groups,min_selection,INT,NO,1,จำนวนต่ำสุดที่ต้องเลือก
+combo_groups,max_selection,INT,NO,1,จำนวนสูงสุดที่เลือกได้
+combo_choices,id,VARCHAR(36),NO,PRIMARY KEY,รหัสตัวเลือกย่อยในกลุ่ม
+combo_choices,combo_group_id,VARCHAR(36),NO,REFERENCES combo_groups(id),รหัสกลุ่มตัวเลือก
+combo_choices,menu_item_id,VARCHAR(36),NO,REFERENCES menu_items(id),รหัสสินค้า FG ตัวเลือกที่นำมาจัดเซ็ต
+combo_choices,price_override,NUMERIC(15 4),YES,NULL,ราคาขายพิเศษในเซ็ต (NULL คือใช้ราคาเซ็ต)
+combo_choices,surcharge,NUMERIC(15 4),YES,0.0000,ราคาเพิ่มพิเศษกรณีเลือกเมนูพรีเมียม (Upcharge)
+combo_choices,is_free,BOOLEAN,YES,FALSE,รวมในเซ็ตฟรีหรือไม่
