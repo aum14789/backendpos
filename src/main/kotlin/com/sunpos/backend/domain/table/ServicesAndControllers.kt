@@ -2,6 +2,8 @@ package com.sunpos.backend.domain.table
 
 import com.sunpos.backend.common.ApiResponse
 import com.sunpos.backend.common.JdbcRepository
+import org.slf4j.LoggerFactory
+import org.springframework.context.annotation.Lazy
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Repository
@@ -42,7 +44,9 @@ class TableSessionRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<TableS
 class TableService(
     private val zoneRepository: ZoneRepository,
     private val tableTypeRepository: TableTypeRepository,
-    private val tableRepository: TableRepository
+    private val tableRepository: TableRepository,
+    @Lazy private val tableSessionService: TableSessionService? = null,
+    @Lazy private val tableSessionRepository: TableSessionRepository? = null
 ) {
     fun listZones(branchId: String? = null): List<Zone> {
         return if (!branchId.isNullOrBlank()) {
@@ -135,13 +139,31 @@ class TableService(
     fun deleteTable(tableId: String) {
         tableRepository.deleteById(tableId)
     }
+
+    @Transactional
+    fun openTable(tableId: String, branchId: String, openedBy: String? = null): TableSession {
+        checkNotNull(tableSessionService) { "TableSessionService is not available" }
+        return tableSessionService.openSession(OpenSessionDto(tableId = tableId, branchId = branchId, openedBy = openedBy))
+    }
+
+    @Transactional
+    fun closeTable(tableId: String, closedBy: String? = null): TableSession {
+        checkNotNull(tableSessionService) { "TableSessionService is not available" }
+        checkNotNull(tableSessionRepository) { "TableSessionRepository is not available" }
+        val activeSession = tableSessionRepository.findByTableIdAndStatus(tableId, "ACTIVE")
+            .orElseThrow { IllegalStateException("No active session found for table $tableId") }
+        return tableSessionService.closeSession(activeSession.id, closedBy)
+    }
 }
 
 @Service
 class TableSessionService(
     private val tableSessionRepository: TableSessionRepository,
-    private val tableRepository: TableRepository
+    private val tableRepository: TableRepository,
+    private val qrTableSessionService: QrTableSessionService? = null
 ) {
+    private val logger = LoggerFactory.getLogger(TableSessionService::class.java)
+
     @Transactional
     fun openSession(dto: OpenSessionDto): TableSession {
         val table = tableRepository.findById(dto.tableId)
@@ -156,8 +178,9 @@ class TableSessionService(
             throw IllegalStateException("Table is already occupied with an active session")
         }
 
+        val effectiveBranchId = dto.branchId.ifBlank { table.branchId }
         val session = TableSession(
-            branchId = dto.branchId,
+            branchId = effectiveBranchId,
             tableId = dto.tableId,
             status = "ACTIVE",
             openedBy = dto.openedBy
@@ -166,6 +189,18 @@ class TableSessionService(
 
         table.status = "OCCUPIED"
         tableRepository.save(table)
+
+        // Automatically create QR Session for the table
+        try {
+            qrTableSessionService?.createSession(
+                branchId = effectiveBranchId,
+                tableId = table.id,
+                tableNumber = table.nameNumber,
+                openedBy = dto.openedBy
+            )
+        } catch (e: Exception) {
+            logger.warn("Failed to automatically create QR session for table {}: {}", table.nameNumber, e.message)
+        }
 
         return savedSession
     }
@@ -188,6 +223,13 @@ class TableSessionService(
             .orElseThrow { IllegalArgumentException("Table not found") }
         table.status = "AVAILABLE"
         tableRepository.save(table)
+
+        // Automatically close QR Session for the table
+        try {
+            qrTableSessionService?.closeSession(session.tableId)
+        } catch (e: Exception) {
+            logger.warn("Failed to automatically close QR session for table {}: {}", table.nameNumber, e.message)
+        }
 
         return savedSession
     }

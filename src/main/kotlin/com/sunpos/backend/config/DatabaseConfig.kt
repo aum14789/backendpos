@@ -27,6 +27,11 @@ class DatabaseConfig {
     private var configuredPassword: String = ""
 
     private fun resolveDatabaseUrl(): String {
+        // 0. If H2 in-memory (e.g. during test profile), prioritize it immediately
+        if (rawDatasourceUrl.startsWith("jdbc:h2:")) {
+            return rawDatasourceUrl
+        }
+
         // 1. Check system environment
         val envUrl = System.getenv("DATABASE_URL")
         if (!envUrl.isNullOrBlank()) return envUrl
