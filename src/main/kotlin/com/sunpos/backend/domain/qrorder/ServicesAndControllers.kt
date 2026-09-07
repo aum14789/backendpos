@@ -53,6 +53,12 @@ class QrOrderService(
             updatedAt = Instant.now()
         )
 
+        qrTableSessionService?.getActiveSession(order.branchId, order.tableNumber)?.ifPresent { session ->
+            order.sessionId = session.id
+            order.tableId = session.tableId
+            order.tableNumber = session.tableNumber
+        }
+
         val savedOrder = qrOrderRepository.save(order)
 
         val savedItems = dto.items.map { itemDto ->
@@ -84,12 +90,30 @@ class QrOrderService(
         require(dto.tableNumber.isNotBlank()) { "tableNumber cannot be blank" }
         require(dto.items.isNotEmpty()) { "Order must contain at least one item" }
 
-        if (!dto.token.isNullOrBlank() && qrTableSessionService != null) {
-            val isTokenValid = qrTableSessionService.isSessionTokenValid(dto.branchId, dto.tableNumber, dto.token)
-            if (!isTokenValid) {
-                logger.warn("QR Order rejected: Token invalid or session expired for table {} branch {}", dto.tableNumber, dto.branchId)
-                throw IllegalStateException("โต๊ะนี้ปิดแล้ว กรุณาติดต่อพนักงาน")
+        val requestedBranch = dto.branchId.trim()
+        val requestedTable = dto.tableNumber.trim()
+        val sessionService = qrTableSessionService
+        val resolvedSession = when {
+            !dto.token.isNullOrBlank() && sessionService != null -> {
+                val byToken = sessionService.findActiveSessionByToken(dto.token)
+                if (byToken.isPresent) {
+                    val session = byToken.get()
+                    if (session.branchId != requestedBranch || !sessionService.tableNumbersMatch(session.tableNumber, requestedTable)) {
+                        logger.warn("QR Order rejected: Token/table mismatch table={} branch={}", requestedTable, requestedBranch)
+                        throw IllegalStateException("โต๊ะนี้ปิดแล้ว กรุณาติดต่อพนักงาน")
+                    }
+                    session
+                } else {
+                    logger.warn("QR Order rejected: Token invalid or session expired for table {} branch {}", requestedTable, requestedBranch)
+                    throw IllegalStateException("โต๊ะนี้ปิดแล้ว กรุณาติดต่อพนักงาน")
+                }
             }
+            sessionService != null -> sessionService.getActiveSession(requestedBranch, requestedTable).orElse(null)
+            else -> null
+        }
+
+        if (!dto.token.isNullOrBlank() && sessionService != null && resolvedSession == null) {
+            throw IllegalStateException("โต๊ะนี้ปิดแล้ว กรุณาติดต่อพนักงาน")
         }
 
         if (!idempotencyKey.isNullOrBlank()) {
@@ -112,8 +136,10 @@ class QrOrderService(
 
         val order = QrOrder(
             id = UUID.randomUUID().toString(),
-            branchId = dto.branchId.trim(),
-            tableNumber = dto.tableNumber.trim(),
+            branchId = resolvedSession?.branchId ?: requestedBranch,
+            tableNumber = resolvedSession?.tableNumber ?: requestedTable,
+            tableId = resolvedSession?.tableId,
+            sessionId = resolvedSession?.id,
             status = QrOrderStatus.pending,
             customerNote = dto.customerNote?.trim()?.ifBlank { null },
             totalAmount = calculatedTotal,
@@ -165,12 +191,36 @@ class QrOrderService(
         return QrOrderDetailsDto(order, items)
     }
 
-    fun getActiveOrdersForTable(branchId: String, tableNumber: String): List<QrOrderDetailsDto> {
+fun getActiveOrdersForTable(branchId: String, tableNumber: String): List<QrOrderDetailsDto> {
+        val closedStatuses = setOf(
+            QrOrderStatus.completed,
+            QrOrderStatus.cancelled
+        )
+
         val orders = qrOrderRepository.findByBranchIdAndTableNumber(branchId, tableNumber)
+            .filter { it.status !in closedStatuses }
             .sortedByDescending { it.createdAt }
+
         return orders.map { order ->
             val items = qrOrderItemRepository.findByOrderId(order.id)
             QrOrderDetailsDto(order, items)
+        }
+    }
+
+    private fun ordersForCurrentSession(session: com.sunpos.backend.domain.table.QrTableSession): List<QrOrderDetailsDto> {
+        val sessionService = qrTableSessionService
+        val byBranch = qrOrderRepository.findByField("branchId", session.branchId)
+        val scoped = byBranch.filter { order ->
+            if (order.status == QrOrderStatus.cancelled) return@filter false
+            val sameSession = !order.sessionId.isNullOrBlank() && order.sessionId == session.id
+            val sameTable = sessionService?.tableNumbersMatch(order.tableNumber, session.tableNumber) == true ||
+                (!order.tableId.isNullOrBlank() && order.tableId == session.tableId)
+            val inThisRound = !order.createdAt.isBefore(session.openedAt)
+            sameSession || (sameTable && inThisRound)
+        }.sortedByDescending { it.createdAt }
+
+        return scoped.map { order ->
+            QrOrderDetailsDto(order, qrOrderItemRepository.findByOrderId(order.id))
         }
     }
 
@@ -386,7 +436,8 @@ class PublicOrderController(
         @RequestParam(required = false) token: String?,
         @RequestHeader(value = "X-Session-Token", required = false) headerToken: String?
     ): List<QrOrderDetailsDto> {
-        return qrOrderService.getActiveOrdersForTable(branchId.trim(), tableNumber.trim())
+        val effectiveToken = token?.trim()?.ifBlank { null } ?: headerToken?.trim()?.ifBlank { null }
+        return qrOrderService.getActiveOrdersForTable(branchId.trim(), tableNumber.trim(), effectiveToken)
     }
 
     @GetMapping("/orders/table/{branchId}/{tableNumber}")

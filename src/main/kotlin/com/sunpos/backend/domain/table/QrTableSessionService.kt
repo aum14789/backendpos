@@ -30,7 +30,20 @@ class QrTableSessionService(
 
     fun buildQrOrderUrl(branchId: String, tableNumber: String, sessionToken: String): String {
         val cleanBase = qrOrderBaseUrl.trim().trimEnd('/')
-        return "$cleanBase/menu/$branchId/$tableNumber?token=$sessionToken"
+        val encodedBranch = java.net.URLEncoder.encode(branchId.trim(), Charsets.UTF_8).replace("+", "%20")
+        val encodedTable = java.net.URLEncoder.encode(tableNumber.trim(), Charsets.UTF_8).replace("+", "%20")
+        return "$cleanBase/menu/$encodedBranch/$encodedTable?token=$sessionToken"
+    }
+
+    fun normalizeTableNumber(value: String): String {
+        return value.trim().lowercase().replace(Regex("[^a-z0-9ก-๙]"), "")
+    }
+
+    fun tableNumbersMatch(left: String, right: String): Boolean {
+        if (left.equals(right, ignoreCase = true)) return true
+        val a = normalizeTableNumber(left)
+        val b = normalizeTableNumber(right)
+        return a.isNotBlank() && a == b
     }
 
     fun toResponseDto(session: QrTableSession): QrSessionResponseDto {
@@ -96,7 +109,23 @@ class QrTableSessionService(
     }
 
     fun getActiveSession(branchId: String, tableNumber: String): Optional<QrTableSession> {
-        return qrTableSessionRepository.findActiveByBranchIdAndTableNumber(branchId, tableNumber)
+        val exact = qrTableSessionRepository.findActiveByBranchIdAndTableNumber(branchId, tableNumber)
+        if (exact.isPresent) return exact
+
+        val target = normalizeTableNumber(tableNumber)
+        if (target.isBlank()) return Optional.empty()
+        val fallback = qrTableSessionRepository.findAllByBranchIdAndStatus(branchId, QrTableSessionStatus.ACTIVE.name)
+            .filter { tableNumbersMatch(it.tableNumber, tableNumber) }
+            .maxByOrNull { it.openedAt }
+        return Optional.ofNullable(fallback)
+    }
+
+    fun findActiveSessionByToken(token: String): Optional<QrTableSession> {
+        if (token.isBlank()) return Optional.empty()
+        val found = qrTableSessionRepository.findBySessionToken(token.trim()).orElse(null) ?: return Optional.empty()
+        if (found.status != QrTableSessionStatus.ACTIVE.name) return Optional.empty()
+        if (found.expiresAt != null && found.expiresAt!!.isBefore(Instant.now())) return Optional.empty()
+        return Optional.of(found)
     }
 
     fun getActiveSessionByTableId(tableId: String): Optional<QrTableSession> {
@@ -168,16 +197,19 @@ class QrTableSessionService(
 
     fun isSessionTokenValid(branchId: String, tableNumber: String, token: String): Boolean {
         if (token.isBlank()) return false
-        val active = qrTableSessionRepository.findActiveByBranchIdAndTableNumber(branchId, tableNumber)
+        val byToken = findActiveSessionByToken(token)
+        if (byToken.isPresent) {
+            val session = byToken.get()
+            return session.branchId == branchId.trim() && tableNumbersMatch(session.tableNumber, tableNumber)
+        }
+
+        val active = getActiveSession(branchId, tableNumber)
         if (active.isEmpty) return false
         val session = active.get()
-
         if (session.sessionToken != token) return false
-
         if (session.expiresAt != null && session.expiresAt!!.isBefore(Instant.now())) {
             return false
         }
-
         return true
     }
 }

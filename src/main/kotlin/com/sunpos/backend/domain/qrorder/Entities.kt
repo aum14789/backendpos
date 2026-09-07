@@ -18,6 +18,8 @@ data class QrOrder(
     val id: String = UUID.randomUUID().toString(),
     var branchId: String = "",
     var tableNumber: String = "",
+    var tableId: String? = null,
+    var sessionId: String? = null,
     var status: QrOrderStatus = QrOrderStatus.pending,
     var customerNote: String? = null,
     var totalAmount: BigDecimal = BigDecimal.ZERO,

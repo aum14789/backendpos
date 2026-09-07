@@ -36,4 +36,8 @@ class QrTableSessionRepository(
     fun findAllByBranchIdAndTableNumberAndStatus(branchId: String, tableNumber: String, status: String): List<QrTableSession> {
         return findByFields(mapOf("branchId" to branchId, "tableNumber" to tableNumber, "status" to status))
     }
+
+    fun findAllByBranchIdAndStatus(branchId: String, status: String): List<QrTableSession> {
+        return findByFields(mapOf("branchId" to branchId, "status" to status))
+    }
 }
