@@ -378,4 +378,22 @@ class PublicOrderController(
             )
         }
     }
+
+    @GetMapping("/orders/table")
+    fun getTableOrders(
+        @RequestParam branchId: String,
+        @RequestParam tableNumber: String,
+        @RequestParam(required = false) token: String?,
+        @RequestHeader(value = "X-Session-Token", required = false) headerToken: String?
+    ): List<QrOrderDetailsDto> {
+        return qrOrderService.getActiveOrdersForTable(branchId.trim(), tableNumber.trim())
+    }
+
+    @GetMapping("/orders/table/{branchId}/{tableNumber}")
+    fun getTableOrdersByPath(
+        @PathVariable branchId: String,
+        @PathVariable tableNumber: String
+    ): List<QrOrderDetailsDto> {
+        return qrOrderService.getActiveOrdersForTable(branchId.trim(), tableNumber.trim())
+    }
 }
