@@ -150,39 +150,53 @@ class InternalAuthFilter(
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
-        val path = request.requestURI
-        if (path.startsWith("/api/internal/")) {
-            // Check headers: branchId / activeKey or internal secret
-            val branchId = request.getHeader("branchId")
-                ?: request.getHeader("X-Branch-Id")
-                ?: request.getHeader("branch-id")
+    val path = request.requestURI
 
-            val activeKey = request.getHeader("activeKey")
-                ?: request.getHeader("X-Active-Key")
-                ?: request.getHeader("active-key")
+    // รองรับทั้ง /api/internal/** และ endpoint เปิด/ปิด QR session ของโต๊ะ
+    val isInternalPath = path.startsWith("/api/internal/")
+    val isTableQrSessionPath = path.startsWith("/api/v1/tables/") && path.contains("/qr-session")
+            || path.startsWith("/api/tables/") && path.contains("/qr-session")
 
-            val internalSecret = request.getHeader("X-Internal-Secret")
+    if (isInternalPath || isTableQrSessionPath) {
+        val branchId = request.getHeader("branchId")
+            ?: request.getHeader("X-Branch-Id")
+            ?: request.getHeader("branch-id")
 
-            val isSecretValid = !internalSecret.isNullOrBlank() && internalSecret == "sunpos-internal-secret-token"
-            val isKeyValid = !branchId.isNullOrBlank() && !activeKey.isNullOrBlank() && isValidActiveKey(branchId.trim(), activeKey.trim())
+        val activeKey = request.getHeader("activeKey")
+            ?: request.getHeader("X-Active-Key")
+            ?: request.getHeader("active-key")
 
-            if (isSecretValid || isKeyValid) {
-                val principal = branchId ?: "INTERNAL_SERVICE"
-                val auth = UsernamePasswordAuthenticationToken(
-                    principal,
-                    null,
-                    listOf(SimpleGrantedAuthority("ROLE_BRANCH_SERVICE"), SimpleGrantedAuthority("ROLE_INTERNAL"))
+        val internalSecret = request.getHeader("X-Internal-Secret")
+
+        val isSecretValid = !internalSecret.isNullOrBlank()
+                && internalSecret == "sunpos-internal-secret-token"
+        val isKeyValid = !branchId.isNullOrBlank()
+                && !activeKey.isNullOrBlank()
+                && isValidActiveKey(branchId.trim(), activeKey.trim())
+
+        if (isSecretValid || isKeyValid) {
+            val principal = branchId ?: "INTERNAL_SERVICE"
+            val auth = UsernamePasswordAuthenticationToken(
+                principal,
+                null,
+                listOf(
+                    SimpleGrantedAuthority("ROLE_BRANCH_SERVICE"),
+                    SimpleGrantedAuthority("ROLE_INTERNAL")
                 )
-                SecurityContextHolder.getContext().authentication = auth
-            } else if (SecurityContextHolder.getContext().authentication == null) {
-                // If neither branch active key nor existing authenticated admin session is present, reject
-                response.status = HttpServletResponse.SC_UNAUTHORIZED
-                response.contentType = "application/json;charset=UTF-8"
-                response.writer.write("""{"success":false,"error":{"code":"UNAUTHORIZED","message":"Invalid or missing Branch Active Key / Internal credentials"}}""")
-                return
-            }
+            )
+            SecurityContextHolder.getContext().authentication = auth
+        } else if (isInternalPath && SecurityContextHolder.getContext().authentication == null) {
+            // เฉพาะ /api/internal/** ถ้า key ผิดให้ตัดทันที
+            // ส่วน /api/v1/tables/*/qr-session ปล่อยต่อไปให้ JWT filter ลองอีกทาง
+            response.status = HttpServletResponse.SC_UNAUTHORIZED
+            response.contentType = "application/json;charset=UTF-8"
+            response.writer.write(
+                """{"success":false,"error":{"code":"UNAUTHORIZED","message":"Invalid or missing Branch Active Key / Internal credentials"}}"""
+            )
+            return
         }
-        filterChain.doFilter(request, response)
+    }
+    filterChain.doFilter(request, response)
     }
 
     private fun isValidActiveKey(branchId: String, activeKey: String): Boolean {
