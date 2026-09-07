@@ -251,3 +251,7 @@ data class BranchAllocationsResponse(
     val allocations: Map<String, List<String>> = emptyMap(),
     val brandAllocations: Map<String, List<String>> = emptyMap()
 )
+
+data class UpdateAvailabilityRequest(
+    val availability: String = "AVAILABLE"
+)

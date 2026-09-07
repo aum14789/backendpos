@@ -265,6 +265,23 @@ class CatalogService(
         return getMenuItemDetails(id)
     }
 
+    @Transactional
+    fun updateAvailability(id: String, availability: String): MenuItemResponseDto {
+        val validStatuses = setOf("AVAILABLE", "SOLD_OUT", "DISABLED")
+        val cleanStatus = availability.trim().uppercase()
+        require(cleanStatus in validStatuses) {
+            "Invalid availability status '$availability'. Must be one of: AVAILABLE, SOLD_OUT, DISABLED"
+        }
+
+        val item = itemRepository.findById(id)
+            .orElseThrow { IllegalArgumentException("Menu item not found: $id") }
+
+        item.availability = cleanStatus
+        item.updatedAt = Instant.now()
+        itemRepository.save(item)
+        return getMenuItemDetails(id)
+    }
+
     fun checkDeleteEligibility(id: String): MenuItemDeleteEligibilityDto {
         val item = itemRepository.findById(id).orElse(null)
             ?: return MenuItemDeleteEligibilityDto(
@@ -584,6 +601,15 @@ class CatalogController(
         @RequestBody dto: MenuItemCreateDto
     ): ApiResponse<MenuItemResponseDto> {
         return ApiResponse.success(catalogService.updateMenuItem(id, dto), "Menu item updated successfully")
+    }
+
+    @PatchMapping("/items/{id}/availability", "/menu-items/{id}/availability")
+    fun updateAvailability(
+        @PathVariable id: String,
+        @RequestBody request: UpdateAvailabilityRequest
+    ): ApiResponse<MenuItemResponseDto> {
+        val updated = catalogService.updateAvailability(id, request.availability)
+        return ApiResponse.success(updated, "Item availability updated successfully")
     }
 
     @GetMapping("/items/{id}/delete-eligibility", "/menu-items/{id}/delete-eligibility")
