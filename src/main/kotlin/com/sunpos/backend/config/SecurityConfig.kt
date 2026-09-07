@@ -56,11 +56,13 @@ class SecurityConfig(
             "Accept",
             "Origin",
             "Idempotency-Key",
+            "X-Session-Token",
             "branchId",
             "activeKey",
             "X-Branch-Id",
             "X-Active-Key",
-            "X-Internal-Secret"
+            "X-Internal-Secret",
+            "*"
         )
         configuration.exposedHeaders = listOf("Idempotency-Key", "Content-Disposition")
         configuration.allowCredentials = true
