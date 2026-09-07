@@ -39,7 +39,6 @@ class SecurityConfig(
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration()
-        // Support frontend origins: Localhost (5173 POS, 5174 QR Order), Local IP, and Production domains
         configuration.allowedOriginPatterns = listOf(
             "http://localhost:[*]",
             "http://127.0.0.1:[*]",
@@ -93,19 +92,12 @@ class SecurityConfig(
             }
             .authorizeHttpRequests { auth ->
                 auth
-                    // 1. Permit all preflight OPTIONS requests
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-
-                    // 2. Permit Public QR Ordering Endpoints (Customer Mobile Web - Zero Authentication)
                     .requestMatchers(
                         "/api/public/**",
                         "/api/v1/qr/**"
                     ).permitAll()
-
-                    // 3. Permit WebSocket STOMP endpoint for branch outbound handshake
                     .requestMatchers("/ws/**").permitAll()
-
-                    // 4. Permit public auth, device activation, sync, and health endpoints
                     .requestMatchers(
                         "/api/v1/auth/pin-login",
                         "/api/v1/auth/login",
@@ -121,26 +113,20 @@ class SecurityConfig(
                         "/error",
                         "/actuator/health"
                     ).permitAll()
-
-                    // 5. Protected Internal Endpoints (Requires Active Key or Internal Token authentication)
                     .requestMatchers("/api/internal/**").hasAnyRole("BRANCH_SERVICE", "INTERNAL", "SUPER_ADMIN", "ADMIN")
-
-                    // 6. Employee POS / Backoffice Endpoints (Requires JWT authentication)
                     .requestMatchers("/api/v1/**").authenticated()
                     .anyRequest().authenticated()
             }
-            // Rate Limiting Guard for Public Orders
             .addFilterBefore(PublicRateLimitFilter(maxRequestsPerMinute = 30), UsernamePasswordAuthenticationFilter::class.java)
-            // Branch Active Key & Internal Auth Guard
             .addFilterBefore(InternalAuthFilter(branchRepository), UsernamePasswordAuthenticationFilter::class.java)
-            // Employee JWT Authentication Filter
             .addFilterBefore(JwtAuthenticationFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter::class.java)
 
         return http.build()
     }
 }
 
-// Filter validating Branch Active Key or Internal Secret on /api/internal
+// Filter validating Branch Active Key or Internal Secret
+// รองรับ /api/internal/** และ /api/*/tables/**/qr-session
 class InternalAuthFilter(
     private val branchRepository: BranchRepository
 ) : OncePerRequestFilter() {
@@ -150,53 +136,51 @@ class InternalAuthFilter(
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
-    val path = request.requestURI
+        val path = request.requestURI
 
-    // รองรับทั้ง /api/internal/** และ endpoint เปิด/ปิด QR session ของโต๊ะ
-    val isInternalPath = path.startsWith("/api/internal/")
-    val isTableQrSessionPath = path.startsWith("/api/v1/tables/") && path.contains("/qr-session")
-            || path.startsWith("/api/tables/") && path.contains("/qr-session")
+        val isInternalPath = path.startsWith("/api/internal/")
+        val isTableQrSessionPath =
+            (path.startsWith("/api/v1/tables/") || path.startsWith("/api/tables/")) &&
+                    path.contains("/qr-session")
 
-    if (isInternalPath || isTableQrSessionPath) {
-        val branchId = request.getHeader("branchId")
-            ?: request.getHeader("X-Branch-Id")
-            ?: request.getHeader("branch-id")
+        if (isInternalPath || isTableQrSessionPath) {
+            val branchId = request.getHeader("branchId")
+                ?: request.getHeader("X-Branch-Id")
+                ?: request.getHeader("branch-id")
 
-        val activeKey = request.getHeader("activeKey")
-            ?: request.getHeader("X-Active-Key")
-            ?: request.getHeader("active-key")
+            val activeKey = request.getHeader("activeKey")
+                ?: request.getHeader("X-Active-Key")
+                ?: request.getHeader("active-key")
 
-        val internalSecret = request.getHeader("X-Internal-Secret")
+            val internalSecret = request.getHeader("X-Internal-Secret")
 
-        val isSecretValid = !internalSecret.isNullOrBlank()
-                && internalSecret == "sunpos-internal-secret-token"
-        val isKeyValid = !branchId.isNullOrBlank()
-                && !activeKey.isNullOrBlank()
-                && isValidActiveKey(branchId.trim(), activeKey.trim())
+            val isSecretValid = !internalSecret.isNullOrBlank() &&
+                    internalSecret == "sunpos-internal-secret-token"
 
-        if (isSecretValid || isKeyValid) {
-            val principal = branchId ?: "INTERNAL_SERVICE"
-            val auth = UsernamePasswordAuthenticationToken(
-                principal,
-                null,
-                listOf(
-                    SimpleGrantedAuthority("ROLE_BRANCH_SERVICE"),
-                    SimpleGrantedAuthority("ROLE_INTERNAL")
+            val isKeyValid = !branchId.isNullOrBlank() &&
+                    !activeKey.isNullOrBlank() &&
+                    isValidActiveKey(branchId.trim(), activeKey.trim())
+
+            if (isSecretValid || isKeyValid) {
+                val principal = branchId ?: "INTERNAL_SERVICE"
+                val auth = UsernamePasswordAuthenticationToken(
+                    principal,
+                    null,
+                    listOf(
+                        SimpleGrantedAuthority("ROLE_BRANCH_SERVICE"),
+                        SimpleGrantedAuthority("ROLE_INTERNAL")
+                    )
                 )
-            )
-            SecurityContextHolder.getContext().authentication = auth
-        } else if (isInternalPath && SecurityContextHolder.getContext().authentication == null) {
-            // เฉพาะ /api/internal/** ถ้า key ผิดให้ตัดทันที
-            // ส่วน /api/v1/tables/*/qr-session ปล่อยต่อไปให้ JWT filter ลองอีกทาง
-            response.status = HttpServletResponse.SC_UNAUTHORIZED
-            response.contentType = "application/json;charset=UTF-8"
-            response.writer.write(
-                """{"success":false,"error":{"code":"UNAUTHORIZED","message":"Invalid or missing Branch Active Key / Internal credentials"}}"""
-            )
-            return
+                SecurityContextHolder.getContext().authentication = auth
+            } else if (isInternalPath && SecurityContextHolder.getContext().authentication == null) {
+                response.status = HttpServletResponse.SC_UNAUTHORIZED
+                response.contentType = "application/json;charset=UTF-8"
+                response.writer.write("""{"success":false,"error":{"code":"UNAUTHORIZED","message":"Invalid or missing Branch Active Key / Internal credentials"}}""")
+                return
+            }
         }
-    }
-    filterChain.doFilter(request, response)
+
+        filterChain.doFilter(request, response)
     }
 
     private fun isValidActiveKey(branchId: String, activeKey: String): Boolean {
@@ -224,7 +208,6 @@ class InternalAuthFilter(
     }
 }
 
-// In-memory sliding window rate limiter for public order creation
 class PublicRateLimitFilter(
     private val maxRequestsPerMinute: Int = 30
 ) : OncePerRequestFilter() {
@@ -254,7 +237,7 @@ class PublicRateLimitFilter(
             }
 
             if (tracker != null && tracker.count > maxRequestsPerMinute) {
-                response.status = 429 // Too Many Requests
+                response.status = 429
                 response.setHeader("Retry-After", "60")
                 response.contentType = "application/json;charset=UTF-8"
                 response.writer.write("""{"success":false,"error":{"code":"RATE_LIMIT_EXCEEDED","message":"Too many orders submitted from this IP. Please wait a moment before trying again."}}""")
@@ -295,7 +278,6 @@ class JwtAuthenticationFilter(
                 val auth = UsernamePasswordAuthenticationToken(username, null, authorities)
                 SecurityContextHolder.getContext().authentication = auth
             } else if (token.startsWith("jwt_mock_") || token.startsWith("jwt_token_")) {
-                // Development / Mock Session Authentication Handler for Seamless Testing
                 val isSuper = token.contains("admin") || token.contains("hq") || token.contains("super")
                 val isOffice = token.contains("office")
                 val isManager = token.contains("manager")
