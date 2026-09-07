@@ -191,12 +191,32 @@ class QrOrderService(
         return QrOrderDetailsDto(order, items)
     }
 
-fun getActiveOrdersForTable(branchId: String, tableNumber: String): List<QrOrderDetailsDto> {
+    fun getActiveOrdersForTable(
+        branchId: String,
+        tableNumber: String,
+        token: String? = null
+    ): List<QrOrderDetailsDto> {
         val closedStatuses = setOf(
             QrOrderStatus.completed,
             QrOrderStatus.cancelled
         )
 
+        // ถ้ามี token → กรองเฉพาะออเดอร์ของ session ปัจจุบัน (ประวัติไม่มั่วข้ามรอบ)
+        val sessionService = qrTableSessionService
+        if (!token.isNullOrBlank() && sessionService != null) {
+            val byToken = sessionService.findActiveSessionByToken(token)
+            if (byToken.isPresent) {
+                return ordersForCurrentSession(byToken.get())
+                    .filter { it.order.status !in closedStatuses }
+            }
+            val active = sessionService.getActiveSession(branchId, tableNumber)
+            if (active.isPresent) {
+                return ordersForCurrentSession(active.get())
+                    .filter { it.order.status !in closedStatuses }
+            }
+        }
+
+        // ไม่มี token / ไม่เจอ session → ดึงของโต๊ะนี้ที่ยังไม่จบ
         val orders = qrOrderRepository.findByBranchIdAndTableNumber(branchId, tableNumber)
             .filter { it.status !in closedStatuses }
             .sortedByDescending { it.createdAt }
