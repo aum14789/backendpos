@@ -26,7 +26,7 @@ class QrTableSessionServiceTest {
         qrTableSessionService = QrTableSessionService(
             qrTableSessionRepository = qrTableSessionRepository,
             tableRepository = tableRepository,
-            qrOrderBaseUrl = "https://qr.sunpos.app"
+            qrOrderBaseUrl = "https://sunqrorder.vercel.app"
         )
     }
 
@@ -170,7 +170,7 @@ class QrTableSessionServiceTest {
         val token = "xyz987token1234"
 
         val url = qrTableSessionService.buildQrOrderUrl(branchId, tableNumber, token)
-        assertEquals("https://qr.sunpos.app/menu/b123/A-10?token=xyz987token1234", url)
+        assertEquals("https://sunqrorder.vercel.app/menu/b123/A-10?token=xyz987token1234", url)
     }
 
     @Test

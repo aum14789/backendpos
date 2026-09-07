@@ -42,6 +42,9 @@ class OrderServiceTest {
     @Autowired
     private lateinit var businessDayRepository: BusinessDayRepository
 
+    @Autowired
+    private lateinit var itemRepository: MenuItemRepository
+
     private lateinit var branchId: String
     private lateinit var categoryId: String
     private lateinit var menuItemId: String
@@ -49,6 +52,7 @@ class OrderServiceTest {
 
     @BeforeEach
     fun setUp() {
+        itemRepository.deleteAll()
         branchId = "branch-001"
 
         // Open active business day for test branch

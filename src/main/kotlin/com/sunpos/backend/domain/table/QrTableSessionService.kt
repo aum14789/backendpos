@@ -12,8 +12,8 @@ import java.util.Optional
 class QrTableSessionService(
     private val qrTableSessionRepository: QrTableSessionRepository,
     private val tableRepository: TableRepository,
-    @Value("\${sunpos.qr.base-url:\${QR_ORDER_BASE_URL:https://qr.sunpos.app}}")
-    private val qrOrderBaseUrl: String = "https://qr.sunpos.app"
+    @Value("\${app.qr-order.base-url:\${sunpos.qr.base-url:\${QR_ORDER_BASE_URL:https://sunqrorder.vercel.app}}}")
+    private val qrOrderBaseUrl: String = "https://sunqrorder.vercel.app"
 ) {
     private val logger = LoggerFactory.getLogger(QrTableSessionService::class.java)
     private val secureRandom = SecureRandom()

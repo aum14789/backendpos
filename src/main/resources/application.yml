@@ -37,7 +37,11 @@ sunpos:
     channel-access-token: ${LINE_CHANNEL_ACCESS_TOKEN:access_token_sample_abc123}
     mock-mode: ${LINE_MOCK_MODE:true}
   qr:
-    base-url: ${QR_ORDER_BASE_URL:https://qr.sunpos.app}
+    base-url: ${QR_ORDER_BASE_URL:https://sunqrorder.vercel.app}
+
+app:
+  qr-order:
+    base-url: ${QR_ORDER_BASE_URL:https://sunqrorder.vercel.app}
 
 logging:
   level:
