@@ -25,6 +25,12 @@ class GlobalExceptionHandler {
             .body(ApiResponse.error("VALIDATION_FAILED", "Request validation failed", details))
     }
 
+    @ExceptionHandler(NoSuchElementException::class)
+    fun handleNoSuchElement(ex: NoSuchElementException): ResponseEntity<ApiResponse<Nothing>> {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ApiResponse.error("NOT_FOUND", ex.message ?: "Resource not found"))
+    }
+
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleIllegalArgument(ex: IllegalArgumentException): ResponseEntity<ApiResponse<Nothing>> {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

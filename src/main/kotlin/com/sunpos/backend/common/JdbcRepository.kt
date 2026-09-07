@@ -340,7 +340,8 @@ abstract class JdbcRepository<T : Any>(
         try {
             jdbcTemplate.update(sql, *values.toTypedArray())
         } catch (e: Exception) {
-            logger.debug("JDBC save failed for {}/{}, preserved in localCache: {}", tableName, id, e.message)
+            logger.error("JDBC save failed for {}/{}: {}", tableName, id, e.message, e)
+            throw e
         }
         return entity
     }

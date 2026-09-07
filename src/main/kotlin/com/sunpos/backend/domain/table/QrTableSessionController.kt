@@ -18,7 +18,7 @@ class QrTableSessionController(
         @RequestBody(required = false) request: OpenQrSessionRequest?
     ): ResponseEntity<ApiResponse<QrSessionResponseDto>> {
         val table = tableRepository.findById(tableId).orElseThrow {
-            IllegalArgumentException("Table not found with id: $tableId")
+            NoSuchElementException("Table not found with id: $tableId")
         }
 
         val session = qrTableSessionService.createSession(
