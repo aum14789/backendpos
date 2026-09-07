@@ -23,7 +23,9 @@ class QrOrderService(
     private val menuItemRepository: MenuItemRepository,
     @org.springframework.context.annotation.Lazy
     private val branchOrderPushService: com.sunpos.backend.domain.websocket.BranchOrderPushService? = null,
-    private val scheduledCatalogRepository: ScheduledCatalogRepository? = null
+    private val scheduledCatalogRepository: ScheduledCatalogRepository? = null,
+    @org.springframework.context.annotation.Lazy
+    private val qrTableSessionService: com.sunpos.backend.domain.table.QrTableSessionService? = null
 ) {
     private val logger = LoggerFactory.getLogger(QrOrderService::class.java)
 
@@ -81,6 +83,14 @@ class QrOrderService(
         require(dto.branchId.isNotBlank()) { "branchId cannot be blank" }
         require(dto.tableNumber.isNotBlank()) { "tableNumber cannot be blank" }
         require(dto.items.isNotEmpty()) { "Order must contain at least one item" }
+
+        if (!dto.token.isNullOrBlank() && qrTableSessionService != null) {
+            val isTokenValid = qrTableSessionService.isSessionTokenValid(dto.branchId, dto.tableNumber, dto.token)
+            if (!isTokenValid) {
+                logger.warn("QR Order rejected: Token invalid or session expired for table {} branch {}", dto.tableNumber, dto.branchId)
+                throw IllegalStateException("โต๊ะนี้ปิดแล้ว กรุณาติดต่อพนักงาน")
+            }
+        }
 
         if (!idempotencyKey.isNullOrBlank()) {
             val existing = qrOrderRepository.findByIdempotencyKey(idempotencyKey.trim())
@@ -309,19 +319,63 @@ class QrOrderController(
 @RestController
 @RequestMapping("/api/public")
 class PublicOrderController(
-    private val qrOrderService: QrOrderService
+    private val qrOrderService: QrOrderService,
+    @org.springframework.context.annotation.Lazy
+    private val qrTableSessionService: com.sunpos.backend.domain.table.QrTableSessionService? = null
 ) {
 
     @PostMapping("/orders")
     fun createPublicOrder(
         @RequestHeader(value = "Idempotency-Key", required = false) idempotencyKey: String?,
+        @RequestHeader(value = "X-Session-Token", required = false) headerToken: String?,
         @RequestBody dto: CreatePublicOrderRequest
     ): PublicOrderResponse {
-        return qrOrderService.createPublicOrder(dto, idempotencyKey)
+        val effectiveDto = if (dto.token.isNullOrBlank() && !headerToken.isNullOrBlank()) {
+            dto.copy(token = headerToken.trim())
+        } else {
+            dto
+        }
+        return qrOrderService.createPublicOrder(effectiveDto, idempotencyKey)
     }
 
     @GetMapping("/menu/{branchId}")
     fun getPublicMenu(@PathVariable branchId: String): QrMenuResponseDto {
         return qrOrderService.getBranchMenu(branchId)
+    }
+
+    @GetMapping("/session/validate")
+    fun validateSession(
+        @RequestParam branchId: String,
+        @RequestParam tableNumber: String,
+        @RequestParam(required = false) token: String?,
+        @RequestHeader(value = "X-Session-Token", required = false) headerToken: String?
+    ): org.springframework.http.ResponseEntity<Map<String, Any>> {
+        val effectiveToken = token?.trim()?.ifBlank { null } ?: headerToken?.trim()?.ifBlank { null }
+        val isValid = if (qrTableSessionService != null && !effectiveToken.isNullOrBlank()) {
+            qrTableSessionService.isSessionTokenValid(branchId, tableNumber, effectiveToken)
+        } else {
+            true
+        }
+        val activeSession = qrTableSessionService?.getActiveSession(branchId, tableNumber)?.orElse(null)
+        val isTableOccupied = activeSession != null
+
+        return if (!isValid || (!isTableOccupied && !effectiveToken.isNullOrBlank())) {
+            org.springframework.http.ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).body(
+                mapOf(
+                    "valid" to false,
+                    "active" to false,
+                    "message" to "โต๊ะนี้ปิดแล้ว กรุณาติดต่อพนักงาน"
+                )
+            )
+        } else {
+            org.springframework.http.ResponseEntity.ok(
+                mapOf(
+                    "valid" to true,
+                    "active" to isTableOccupied,
+                    "tableNumber" to tableNumber,
+                    "branchId" to branchId
+                )
+            )
+        }
     }
 }

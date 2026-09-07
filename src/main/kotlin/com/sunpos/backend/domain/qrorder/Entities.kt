@@ -74,7 +74,8 @@ data class CreatePublicOrderRequest(
     val branchId: String,
     val tableNumber: String,
     val customerNote: String? = null,
-    val items: List<PublicOrderItemRequest> = emptyList()
+    val items: List<PublicOrderItemRequest> = emptyList(),
+    val token: String? = null
 )
 
 data class PublicOrderResponse(
