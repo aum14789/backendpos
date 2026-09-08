@@ -357,6 +357,7 @@ class OrganizationController(
         return ApiResponse.success(list.sortedByDescending { it.createdAt })
     }
 
+    @org.springframework.transaction.annotation.Transactional
     @PostMapping("/devices/activate")
     fun activateDevice(@RequestBody dto: ActivateDeviceRequestDto): ApiResponse<DeviceIdentityDto> {
         val code = dto.activationCode.trim()
@@ -377,6 +378,7 @@ class OrganizationController(
         val deviceName: String
         val companyId: String
         val companyName: String
+        var activationRecord: ActivationCode? = null
 
         if (optRecord.isPresent) {
             val record = optRecord.get()
@@ -394,11 +396,7 @@ class OrganizationController(
             deviceName = record.deviceName
             companyId = if (record.companyId.isNotBlank()) record.companyId else "comp-001"
             companyName = if (record.companyName.isNotBlank()) record.companyName else "SunPOS Restaurant Group Co., Ltd."
-
-            record.status = "ACTIVATED"
-            record.activatedAt = now
-            record.activatedDeviceId = "pos-$branchId-${deviceCode.lowercase()}"
-            activationCodeRepository.save(record)
+            activationRecord = record
         } else if (upperCode.startsWith("DEV-")) {
             val trimmed = code.removePrefix("DEV-").removePrefix("dev-")
             val posIdx = trimmed.indexOf("-POS", ignoreCase = true)
@@ -464,6 +462,15 @@ class OrganizationController(
                     isActive = true
                 )
             )
+        }
+
+        // Mark activation code as used only AFTER device is successfully saved
+        // (prevents code from being consumed if device insert fails due to schema issues etc.)
+        activationRecord?.let { record ->
+            record.status = "ACTIVATED"
+            record.activatedAt = now
+            record.activatedDeviceId = generatedDeviceId
+            activationCodeRepository.save(record)
         }
 
         val identity = DeviceIdentityDto(
