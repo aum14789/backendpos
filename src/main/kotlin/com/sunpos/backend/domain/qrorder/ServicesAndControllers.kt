@@ -545,6 +545,13 @@ class PublicOrderController(
         return qrOrderService.getBranchMenu(branchId)
     }
 
+    /** ให้ web QR ตรวจได้ว่าสาขานี้เปิดรับออเดอร์ผ่าน QR หรือไม่ */
+    @GetMapping("/branch/{branchId}/enabled")
+    fun getPublicQrOrderEnabled(@PathVariable branchId: String): ResponseEntity<Boolean> {
+        val enabled = qrOrderService.getQrOrderEnabled(branchId) ?: true
+        return ResponseEntity.ok(enabled)
+    }
+
     @GetMapping("/session/validate")
     fun validateSession(
         @RequestParam branchId: String,

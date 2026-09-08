@@ -40,7 +40,11 @@ class GlobalExceptionHandler {
     @ExceptionHandler(IllegalStateException::class)
     fun handleIllegalState(ex: IllegalStateException): ResponseEntity<ApiResponse<Nothing>> {
         val msg = ex.message ?: "Invalid state"
-        val status = if (msg.contains("โต๊ะนี้ปิดแล้ว")) HttpStatus.FORBIDDEN else HttpStatus.CONFLICT
+        val status = if (
+            msg.contains("โต๊ะนี้ปิดแล้ว") ||
+            msg.contains("งดให้บริการ") ||
+            msg.contains("QR")
+        ) HttpStatus.FORBIDDEN else HttpStatus.CONFLICT
         return ResponseEntity.status(status)
             .body(ApiResponse.error("ILLEGAL_STATE", msg))
     }
