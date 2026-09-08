@@ -90,6 +90,29 @@ data class UpdateQrOrderStatusDto(
     val status: QrOrderStatus
 )
 
+class QrOrderMenuItemSetting(
+    val id: String = UUID.randomUUID().toString(),
+    var branchId: String = "",
+    var menuItemId: String = "",
+    var isEnabled: Boolean = true,
+    val createdAt: Instant = Instant.now(),
+    var updatedAt: Instant = Instant.now()
+)
+
+data class UpdateQrOrderMenuItemRequest(
+    val enabled: Boolean
+)
+
+data class QrOrderMenuManagementItemDto(
+    val id: String,
+    val categoryId: String,
+    val name: String,
+    val description: String? = null,
+    val price: BigDecimal,
+    val imageUrl: String? = null,
+    val isEnabled: Boolean = true
+)
+
 data class QrMenuProductDto(
     val id: String,
     val categoryId: String,

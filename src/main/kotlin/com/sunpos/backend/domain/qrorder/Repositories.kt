@@ -29,3 +29,18 @@ class QrOrderItemRepository(jdbcTemplate: JdbcTemplate) :
         return findByField("orderId", orderId)
     }
 }
+
+/**
+ * Branch-level QR menu switches.  These are deliberately separate from a
+ * menu item's normal availability: a branch may hide an item from QR ordering
+ * while staff can still sell it from the POS (or another branch can sell it).
+ */
+@Repository
+class QrOrderMenuItemSettingRepository(jdbcTemplate: JdbcTemplate) :
+    JdbcRepository<QrOrderMenuItemSetting>(jdbcTemplate, "qr_order_menu_item_settings", QrOrderMenuItemSetting::class.java) {
+    fun findByBranchId(branchId: String): List<QrOrderMenuItemSetting> =
+        findByField("branchId", branchId)
+
+    fun findByBranchIdAndMenuItemId(branchId: String, menuItemId: String): java.util.Optional<QrOrderMenuItemSetting> =
+        findByBranchId(branchId).firstOrNull { it.menuItemId == menuItemId }.let { java.util.Optional.ofNullable(it) }
+}

@@ -7,6 +7,7 @@ import com.sunpos.backend.domain.catalog.ScheduledCatalogRepository
 import com.sunpos.backend.domain.catalog.ScheduledCatalogStatus
 import com.sunpos.backend.domain.organization.BranchRepository
 import org.slf4j.LoggerFactory
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.*
@@ -21,6 +22,7 @@ class QrOrderService(
     private val branchRepository: BranchRepository,
     private val menuCategoryRepository: MenuCategoryRepository,
     private val menuItemRepository: MenuItemRepository,
+    private val qrOrderMenuItemSettingRepository: QrOrderMenuItemSettingRepository,
     @org.springframework.context.annotation.Lazy
     private val branchOrderPushService: com.sunpos.backend.domain.websocket.BranchOrderPushService? = null,
     private val scheduledCatalogRepository: ScheduledCatalogRepository? = null,
@@ -34,6 +36,8 @@ class QrOrderService(
         require(dto.branchId.isNotBlank()) { "branchId cannot be blank" }
         require(dto.tableNumber.isNotBlank()) { "tableNumber cannot be blank" }
         require(dto.items.isNotEmpty()) { "Order must contain at least one item" }
+
+        ensureItemsAreEnabledForQr(dto.branchId.trim(), dto.items.map { it.productId })
 
         var calculatedTotal = BigDecimal.ZERO
         for (item in dto.items) {
@@ -127,6 +131,11 @@ class QrOrderService(
                 )
             }
         }
+
+        ensureItemsAreEnabledForQr(
+            resolvedSession?.branchId ?: requestedBranch,
+            dto.items.map { it.productId }
+        )
 
         var calculatedTotal = BigDecimal.ZERO
         for (item in dto.items) {
@@ -289,6 +298,10 @@ class QrOrderService(
         }.filter { it.isActive && it.availability.equals("AVAILABLE", ignoreCase = true) }
             .sortedBy { it.sortOrder }
 
+        val qrEnabledByItemId = qrOrderMenuItemSettingRepository.findByBranchId(branchId)
+            .associate { it.menuItemId to it.isEnabled }
+        val qrProducts = allProducts.filter { qrEnabledByItemId[it.id] != false }
+
         // 3. Resolve branch-specific pricing overrides from ScheduledCatalog if present
         val branchPriceMap: Map<String, BigDecimal> = try {
             val now = Instant.now()
@@ -301,9 +314,9 @@ class QrOrderService(
         }
 
         // 4. Map products into categories and omit categories without available items
-        val categoryDtos = if (allCategories.isNotEmpty() && allProducts.isNotEmpty()) {
+        val categoryDtos = if (allCategories.isNotEmpty() && qrProducts.isNotEmpty()) {
             allCategories.mapNotNull { cat ->
-                val prods = allProducts.filter { it.categoryId == cat.id }
+                val prods = qrProducts.filter { it.categoryId == cat.id }
                 if (prods.isEmpty()) {
                     null
                 } else {
@@ -340,6 +353,56 @@ class QrOrderService(
             categories = categoryDtos
         )
     }
+
+    /** List all sellable items, including QR-hidden items, for the branch manager screen. */
+    fun getQrMenuManagementItems(branchId: String): List<QrOrderMenuManagementItemDto> {
+        val products = getSellableProductsForBranch(branchId)
+        val enabledByItemId = qrOrderMenuItemSettingRepository.findByBranchId(branchId)
+            .associate { it.menuItemId to it.isEnabled }
+        return products.map { product ->
+            QrOrderMenuManagementItemDto(
+                id = product.id,
+                categoryId = product.categoryId,
+                name = product.name,
+                description = product.description,
+                price = product.basePrice,
+                imageUrl = product.imageUrl,
+                isEnabled = enabledByItemId[product.id] != false
+            )
+        }
+    }
+
+    @Transactional
+    fun updateQrMenuItemEnabled(branchId: String, menuItemId: String, enabled: Boolean): QrOrderMenuManagementItemDto {
+        val product = getSellableProductsForBranch(branchId).firstOrNull { it.id == menuItemId }
+            ?: throw IllegalArgumentException("Menu item '$menuItemId' is not available for branch '$branchId'")
+        val setting = qrOrderMenuItemSettingRepository.findByBranchIdAndMenuItemId(branchId, menuItemId)
+            .orElseGet { QrOrderMenuItemSetting(branchId = branchId, menuItemId = menuItemId) }
+        setting.isEnabled = enabled
+        setting.updatedAt = Instant.now()
+        qrOrderMenuItemSettingRepository.save(setting)
+        return QrOrderMenuManagementItemDto(
+            id = product.id, categoryId = product.categoryId, name = product.name,
+            description = product.description, price = product.basePrice,
+            imageUrl = product.imageUrl, isEnabled = enabled
+        )
+    }
+
+    private fun ensureItemsAreEnabledForQr(branchId: String, productIds: List<String>) {
+        val disabledIds = qrOrderMenuItemSettingRepository.findByBranchId(branchId)
+            .filter { !it.isEnabled }.map { it.menuItemId }.toSet()
+        if (productIds.any { it in disabledIds }) {
+            throw IllegalStateException("มีรายการที่ปิดรับสั่งผ่าน QR Order แล้ว กรุณารีเฟรชเมนู")
+        }
+    }
+
+    private fun getSellableProductsForBranch(branchId: String) =
+        menuItemRepository.findByBranchId(branchId).let { directItems ->
+            if (directItems.isNotEmpty()) directItems
+            else menuItemRepository.findAll().filter { it.branchId == branchId || it.branchId.isBlank() }
+        }
+            .filter { it.isActive && it.availability.equals("AVAILABLE", ignoreCase = true) }
+            .sortedBy { it.sortOrder }
 }
 
 @RestController
@@ -384,6 +447,23 @@ class QrOrderController(
     fun getBranchMenu(@PathVariable branchId: String): ApiResponse<QrMenuResponseDto> {
         return ApiResponse.success(qrOrderService.getBranchMenu(branchId))
     }
+
+    @GetMapping("/branch/{branchId}/menu-items")
+    @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_BRANCH_MANAGER') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun getQrMenuManagementItems(@PathVariable branchId: String): ApiResponse<List<QrOrderMenuManagementItemDto>> {
+        return ApiResponse.success(qrOrderService.getQrMenuManagementItems(branchId))
+    }
+
+    @PatchMapping("/branch/{branchId}/menu-items/{menuItemId}")
+    @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_BRANCH_MANAGER') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun updateQrMenuItemEnabled(
+        @PathVariable branchId: String,
+        @PathVariable menuItemId: String,
+        @RequestBody request: UpdateQrOrderMenuItemRequest
+    ): ApiResponse<QrOrderMenuManagementItemDto> = ApiResponse.success(
+        qrOrderService.updateQrMenuItemEnabled(branchId, menuItemId, request.enabled),
+        "QR Order menu item updated"
+    )
 }
 
 @RestController
