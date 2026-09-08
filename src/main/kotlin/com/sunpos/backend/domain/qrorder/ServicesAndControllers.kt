@@ -38,6 +38,11 @@ class QrOrderService(
         require(dto.tableNumber.isNotBlank()) { "tableNumber cannot be blank" }
         require(dto.items.isNotEmpty()) { "Order must contain at least one item" }
 
+        val branchToggle = branchRepository.findById(dto.branchId.trim()).orElse(null)
+        if (branchToggle != null && !branchToggle.isQrOrderEnabled) {
+            throw IllegalStateException("ขออภัย ระบบสั่งอาหารผ่าน QR งดให้บริการชั่วคราว กรุณาติดต่อพนักงาน")
+        }
+
         ensureItemsAreEnabledForQr(dto.branchId.trim(), dto.items.map { it.productId })
 
         var calculatedTotal = BigDecimal.ZERO
@@ -96,6 +101,11 @@ class QrOrderService(
         require(dto.items.isNotEmpty()) { "Order must contain at least one item" }
 
         val requestedBranch = dto.branchId.trim()
+        // ปิด QR Order ทั้งสาขาชั่วคราว
+        val branchForToggle = branchRepository.findById(requestedBranch).orElse(null)
+        if (branchForToggle != null && !branchForToggle.isQrOrderEnabled) {
+            throw IllegalStateException("ขออภัย ระบบสั่งอาหารผ่าน QR งดให้บริการชั่วคราว กรุณาติดต่อพนักงาน")
+        }
         val requestedTable = dto.tableNumber.trim()
         val sessionService = qrTableSessionService
         val resolvedSession = when {
@@ -280,6 +290,10 @@ class QrOrderService(
 
     fun getBranchMenu(branchId: String): QrMenuResponseDto {
         val branchOpt = branchRepository.findById(branchId)
+        // ปิด QR Order ทั้งสาขาชั่วคราว → ลูกค้าเว็บเห็นข้อความงดให้บริการ
+        if (branchOpt.isPresent && !branchOpt.get().isQrOrderEnabled) {
+            throw IllegalStateException("ขออภัย ระบบสั่งอาหารผ่าน QR งดให้บริการชั่วคราว กรุณาติดต่อพนักงาน")
+        }
         val branchName = branchOpt.map { it.name }.orElse("SunPOS Restaurant")
 
         // 1. Fetch categories for this branch (sorted by sortOrder)
