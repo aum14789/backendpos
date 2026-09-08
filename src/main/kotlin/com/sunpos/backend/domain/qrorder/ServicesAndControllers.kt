@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.math.BigDecimal
 import java.time.Instant
@@ -403,6 +404,20 @@ class QrOrderService(
         }
             .filter { it.isActive && it.availability.equals("AVAILABLE", ignoreCase = true) }
             .sortedBy { it.sortOrder }
+
+    fun getQrOrderEnabled(branchId: String): Boolean? {
+        val branch = branchRepository.findById(branchId).orElse(null) ?: return null
+        return branch.isQrOrderEnabled
+    }
+
+    @Transactional
+    fun setQrOrderEnabled(branchId: String, enabled: Boolean): Boolean {
+        val branch = branchRepository.findById(branchId).orElse(null)
+            ?: throw NoSuchElementException("Branch '$branchId' not found")
+        branch.isQrOrderEnabled = enabled
+        branchRepository.save(branch)
+        return enabled
+    }
 }
 
 @RestController
@@ -413,6 +428,7 @@ class QrOrderController(
 
     @PostMapping("/orders")
     fun createOrder(@RequestBody dto: CreateQrOrderDto): ApiResponse<QrOrderDetailsDto> {
+
         val created = qrOrderService.createOrder(dto)
         return ApiResponse.success(created, "Order submitted successfully")
     }
@@ -464,7 +480,29 @@ class QrOrderController(
         qrOrderService.updateQrMenuItemEnabled(branchId, menuItemId, request.enabled),
         "QR Order menu item updated"
     )
+
+    // ── QR Order Toggle (branch-level) ──
+
+    @GetMapping("/branch/{branchId}/enabled")
+    fun getQrOrderEnabled(@PathVariable branchId: String): ResponseEntity<Boolean> {
+        val enabled = qrOrderService.getQrOrderEnabled(branchId)
+            ?: return ResponseEntity.notFound().build()
+        return ResponseEntity.ok(enabled)
+    }
+
+    @PostMapping("/branch/{branchId}/enabled")
+    @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_BRANCH_MANAGER') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun setQrOrderEnabled(
+        @PathVariable branchId: String,
+        @RequestBody payload: Map<String, Any>
+    ): ResponseEntity<Void> {
+        val enabled = payload["enabled"] as? Boolean
+            ?: return ResponseEntity.badRequest().build()
+        qrOrderService.setQrOrderEnabled(branchId, enabled)
+        return ResponseEntity.ok().build()
+    }
 }
+
 
 @RestController
 @RequestMapping("/api/public")
