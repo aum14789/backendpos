@@ -21,6 +21,9 @@ import java.time.ZonedDateTime
 class TaxInvoiceRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<TaxInvoice>(jdbcTemplate, "tax_invoices", TaxInvoice::class.java) {
     fun findByTaxInvoiceNumber(taxInvoiceNumber: String): java.util.Optional<TaxInvoice> =
         findOneByField("taxInvoiceNumber", taxInvoiceNumber)
+
+    fun findByBranchId(branchId: String): List<TaxInvoice> =
+        findByField("branchId", branchId).sortedByDescending { it.createdAt }
 }
 
 @Repository
@@ -55,6 +58,20 @@ data class CreateTaxInvoiceDto(
     val createdBy: String?
 )
 
+data class TaxInvoiceDetailDto(
+    val invoice: TaxInvoice,
+    val orderIds: List<String>,
+    val items: List<TaxInvoiceItemSnapshot>
+)
+
+data class OrderTaxInvoiceStatusDto(
+    val orderId: String,
+    val hasTaxInvoice: Boolean,
+    val taxInvoiceId: String? = null,
+    val taxInvoiceNumber: String? = null,
+    val status: String? = null
+)
+
 @Service
 class TaxInvoiceService(
     private val taxInvoiceRepository: TaxInvoiceRepository,
@@ -83,13 +100,17 @@ class TaxInvoiceService(
         for (orderId in dto.orderIds) {
             val order = orderRepository.findById(orderId)
                 .orElseThrow { IllegalArgumentException("Receipt order '$orderId' not found") }
-            if (order.status != OrderStatus.COMPLETED) {
-                throw IllegalArgumentException("Only COMPLETED orders can be merged into a Tax Invoice")
+            if (order.status != OrderStatus.COMPLETED && order.status != OrderStatus.PAID) {
+                throw IllegalArgumentException("Only COMPLETED/PAID orders can be merged into a Tax Invoice")
             }
 
             val existing = taxInvoiceReceiptRepository.findByIdOrderId(orderId)
             if (existing.isNotEmpty()) {
-                throw IllegalArgumentException("Order '$orderId' already associated with Tax Invoice '${existing.first().taxInvoiceId}'")
+                // Allow only if the linked invoice is CANCELLED
+                val inv = taxInvoiceRepository.findById(existing.first().taxInvoiceId)
+                if (inv.isPresent && inv.get().status != "CANCELLED") {
+                    throw IllegalArgumentException("Order '$orderId' already associated with Tax Invoice '${existing.first().taxInvoiceId}'")
+                }
             }
 
             totalGross = totalGross.add(order.totalAmount)
@@ -179,6 +200,45 @@ class TaxInvoiceService(
     fun getTaxInvoice(id: String): TaxInvoice {
         return taxInvoiceRepository.findById(id).orElseThrow { IllegalArgumentException("Tax Invoice not found") }
     }
+
+    fun getTaxInvoiceDetail(id: String): TaxInvoiceDetailDto {
+        val invoice = getTaxInvoice(id)
+        val receipts = taxInvoiceReceiptRepository.findByIdTaxInvoiceId(id)
+        val items = taxInvoiceItemSnapshotRepository.findByTaxInvoiceId(id)
+        return TaxInvoiceDetailDto(
+            invoice = invoice,
+            orderIds = receipts.map { it.orderId },
+            items = items
+        )
+    }
+
+    fun getStatusByOrderId(orderId: String): OrderTaxInvoiceStatusDto {
+        val receipts = taxInvoiceReceiptRepository.findByIdOrderId(orderId)
+        if (receipts.isEmpty()) {
+            return OrderTaxInvoiceStatusDto(orderId = orderId, hasTaxInvoice = false)
+        }
+        // Prefer non-cancelled
+        for (r in receipts) {
+            val invOpt = taxInvoiceRepository.findById(r.taxInvoiceId)
+            if (invOpt.isPresent) {
+                val inv = invOpt.get()
+                if (inv.status != "CANCELLED") {
+                    return OrderTaxInvoiceStatusDto(
+                        orderId = orderId,
+                        hasTaxInvoice = true,
+                        taxInvoiceId = inv.id,
+                        taxInvoiceNumber = inv.taxInvoiceNumber,
+                        status = inv.status
+                    )
+                }
+            }
+        }
+        return OrderTaxInvoiceStatusDto(orderId = orderId, hasTaxInvoice = false)
+    }
+
+    fun getStatusesByOrderIds(orderIds: List<String>): List<OrderTaxInvoiceStatusDto> {
+        return orderIds.map { getStatusByOrderId(it) }
+    }
 }
 
 @RestController
@@ -187,13 +247,13 @@ class TaxInvoiceController(
     private val taxInvoiceService: TaxInvoiceService
 ) {
     @PostMapping
-    @PreAuthorize("hasAuthority('TAX_INVOICE_CREATE') or hasAuthority('ROLE_SUPER_ADMIN')")
+    @PreAuthorize("hasAuthority('TAX_INVOICE_CREATE') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_MANAGER') or hasAuthority('ROLE_CASHIER')")
     fun mergeReceipts(@RequestBody dto: CreateTaxInvoiceDto): ApiResponse<TaxInvoice> {
         return ApiResponse.success(taxInvoiceService.mergeReceiptsToTaxInvoice(dto), "Tax Invoice issued successfully")
     }
 
     @PostMapping("/{id}/cancel")
-    @PreAuthorize("hasAuthority('TAX_INVOICE_CANCEL') or hasAuthority('ROLE_SUPER_ADMIN')")
+    @PreAuthorize("hasAuthority('TAX_INVOICE_CANCEL') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_MANAGER')")
     fun cancelInvoice(@PathVariable id: String, @RequestParam cancelledBy: String?): ApiResponse<TaxInvoice> {
         return ApiResponse.success(taxInvoiceService.cancelTaxInvoice(id, cancelledBy), "Tax Invoice cancelled successfully")
     }
@@ -201,5 +261,20 @@ class TaxInvoiceController(
     @GetMapping("/{id}")
     fun getInvoice(@PathVariable id: String): ApiResponse<TaxInvoice> {
         return ApiResponse.success(taxInvoiceService.getTaxInvoice(id))
+    }
+
+    @GetMapping("/{id}/detail")
+    fun getInvoiceDetail(@PathVariable id: String): ApiResponse<TaxInvoiceDetailDto> {
+        return ApiResponse.success(taxInvoiceService.getTaxInvoiceDetail(id))
+    }
+
+    @GetMapping("/by-order/{orderId}")
+    fun getStatusByOrder(@PathVariable orderId: String): ApiResponse<OrderTaxInvoiceStatusDto> {
+        return ApiResponse.success(taxInvoiceService.getStatusByOrderId(orderId))
+    }
+
+    @PostMapping("/status-batch")
+    fun getStatusesBatch(@RequestBody orderIds: List<String>): ApiResponse<List<OrderTaxInvoiceStatusDto>> {
+        return ApiResponse.success(taxInvoiceService.getStatusesByOrderIds(orderIds))
     }
 }
