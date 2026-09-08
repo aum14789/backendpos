@@ -52,6 +52,7 @@ class Branch(
     var createdBy: String? = null,
     var updatedAt: Instant = Instant.now(),
     var updatedBy: String? = null,
+    var isQrOrderEnabled: Boolean = true,
     var version: Long = 0
 )
 
