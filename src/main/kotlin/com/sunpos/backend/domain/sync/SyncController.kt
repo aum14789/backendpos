@@ -264,9 +264,10 @@ class SyncService(
                     aggregateType = it.entityType,
                     aggregateId = it.entityId,
                     eventType = when (it.entityType) {
-                        "ORDER" -> "ORDER_CREATED"
+                        "ORDER" -> if (it.action.equals("UPDATE", ignoreCase = true)) "ORDER_UPDATED" else "ORDER_CREATED"
                         "PAYMENT" -> "PAYMENT_COMPLETED"
-                        "ORDER_STATUS" -> "ORDER_COMPLETED"
+                        // Respect the status the POS actually recorded (PAID / CANCELLED / COMPLETED)
+                        "ORDER_STATUS" -> "ORDER_STATUS_${it.action.ifBlank { "COMPLETED" }}"
                         "TABLE_STATUS" -> "TABLE_STATUS_UPDATED"
                         else -> "${it.entityType}_${it.action}"
                     },
@@ -393,6 +394,29 @@ class SyncService(
                     val order = orderOpt.get()
                     order.status = OrderStatus.COMPLETED
                     order.financialStatus = FinancialStatus.PAID
+                    order.updatedAt = Instant.now()
+                    orderRepository.save(order)
+                }
+            }
+
+            // POS-reported order status transitions (PAID / CANCELLED / COMPLETED …).
+            // Payload carries the authoritative status recorded on the device.
+            "ORDER_STATUS_PAID", "ORDER_STATUS_CANCELLED", "ORDER_STATUS_COMPLETED" -> {
+                val orderOpt = orderRepository.findById(dto.aggregateId)
+                if (orderOpt.isPresent) {
+                    val order = orderOpt.get()
+                    val statusStr = (payloadMap["status"] as? String)
+                        ?.uppercase()
+                        ?: dto.eventType.removePrefix("ORDER_STATUS_")
+                    val newStatus = try {
+                        OrderStatus.valueOf(statusStr)
+                    } catch (_: Exception) {
+                        OrderStatus.COMPLETED
+                    }
+                    order.status = newStatus
+                    if (newStatus == OrderStatus.COMPLETED || newStatus == OrderStatus.PAID) {
+                        order.financialStatus = FinancialStatus.PAID
+                    }
                     order.updatedAt = Instant.now()
                     orderRepository.save(order)
                 }
