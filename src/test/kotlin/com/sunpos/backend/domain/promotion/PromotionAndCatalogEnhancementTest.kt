@@ -40,6 +40,9 @@ class PromotionAndCatalogEnhancementTest {
     @Autowired
     private lateinit var couponRepository: CouponRepository
 
+    @Autowired
+    private lateinit var couponService: CouponService
+
     @Test
     fun `test Modifier min and max selection bounds validation`() {
         val cat = catalogService.createCategory(MenuCategory(branchId = "branch-promo", name = "Test Category"))
@@ -257,15 +260,29 @@ class PromotionAndCatalogEnhancementTest {
             )
         )
 
-        // 1. Redeem Coupon Successfully
-        val discount = promotionService.applyPromotionsToOrder(order.id, "POS", "cust-001", "SAVE50NOW")
-        assertEquals(BigDecimal("50.0000"), discount)
+        // 1. Redeem Coupon via CouponService (single writer for usage — ADR 0006 §8)
+        val redeemResult = couponService.redeemCoupon(
+            RedeemCouponRequestDto(
+                code = "SAVE50NOW",
+                orderId = order.id,
+                orderAmount = BigDecimal("100.00"),
+                customerId = "cust-001",
+                branchId = "branch-promo-3"
+            )
+        )
+        assertTrue(redeemResult.success)
+        assertEquals(BigDecimal("50.0000"), redeemResult.discountAmount)
 
+        // Verify coupon usage tracked by redeemCoupon, not applyPromotionsToOrder
         val refreshedCoupon = couponRepository.findById(coupon.id).get()
         assertTrue(refreshedCoupon.isUsed)
         assertEquals(1, refreshedCoupon.currentUses)
 
-        // 2. Try redeeming same coupon again on second order -> Expected Failure
+        // 2. applyPromotionsToOrder still works (reads coupon state, doesn't mutate it)
+        val discount = promotionService.applyPromotionsToOrder(order.id, "POS", "cust-001")
+        assertEquals(BigDecimal("50.0000"), discount)
+
+        // 3. Try redeeming same coupon again on second order -> Expected Failure (idempotent check)
         val order2 = orderService.createOrder(
             CreateOrderRequest(
                 branchId = "branch-promo-3",
@@ -277,7 +294,15 @@ class PromotionAndCatalogEnhancementTest {
             )
         )
         assertThrows<IllegalArgumentException> {
-            promotionService.applyPromotionsToOrder(order2.id, "POS", "cust-001", "SAVE50NOW")
+            couponService.redeemCoupon(
+                RedeemCouponRequestDto(
+                    code = "SAVE50NOW",
+                    orderId = order2.id,
+                    orderAmount = BigDecimal("100.00"),
+                    customerId = "cust-001",
+                    branchId = "branch-promo-3"
+                )
+            )
         }
     }
 }

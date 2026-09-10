@@ -41,6 +41,7 @@ class Promotion(
     var isActive: Boolean = true,
     var startAt: Instant = Instant.now(),
     var endAt: Instant = Instant.now().plusSeconds(86400 * 30),
+    var brandId: String? = null,
     var branchId: String? = null,
     var channel: String? = null,
     var minQuantity: BigDecimal = BigDecimal.ZERO,
@@ -256,4 +257,83 @@ data class CouponRedemptionDto(
     val orderId: String = "",
     val discountAmount: BigDecimal = BigDecimal.ZERO,
     val redeemedAt: Instant = Instant.now()
+)
+
+// ── Promotion DTOs ──
+
+data class PromotionDto(
+    val id: String = "",
+    val code: String = "",
+    val name: String = "",
+    val description: String? = null,
+    val promoType: PromotionType = PromotionType.PERCENTAGE,
+    val priority: Int = 0,
+    val isActive: Boolean = true,
+    val startAt: Instant = Instant.now(),
+    val endAt: Instant = Instant.now(),
+    val brandId: String? = null,
+    val branchId: String? = null,
+    val channel: String? = null,
+    val minQuantity: BigDecimal = BigDecimal.ZERO,
+    val minAmount: BigDecimal = BigDecimal.ZERO,
+    val discountRate: BigDecimal = BigDecimal.ZERO,
+    val discountAmount: BigDecimal = BigDecimal.ZERO,
+    val stackingPolicy: StackingPolicy = StackingPolicy.STACKABLE,
+    val usageLimit: Int? = null,
+    val perCustomerLimit: Int? = null,
+    val createdAt: Instant = Instant.now()
+)
+
+data class CreatePromotionRequestDto(
+    val code: String = "",
+    val name: String = "",
+    val description: String? = null,
+    val promoType: PromotionType = PromotionType.PERCENTAGE,
+    val priority: Int = 0,
+    val startAt: Instant = Instant.now(),
+    val endAt: Instant = Instant.now().plusSeconds(86400 * 30),
+    val brandId: String? = null,
+    val branchId: String? = null,
+    val channel: String? = null,
+    val minQuantity: BigDecimal = BigDecimal.ZERO,
+    val minAmount: BigDecimal = BigDecimal.ZERO,
+    val discountRate: BigDecimal = BigDecimal.ZERO,
+    val discountAmount: BigDecimal = BigDecimal.ZERO,
+    val stackingPolicy: StackingPolicy = StackingPolicy.STACKABLE,
+    val usageLimit: Int? = null,
+    val perCustomerLimit: Int? = null,
+    val eligibleProductIds: List<String> = emptyList(),
+    val rewardProductIds: List<String> = emptyList()
+)
+
+data class UpdatePromotionRequestDto(
+    val name: String? = null,
+    val description: String? = null,
+    val promoType: PromotionType? = null,
+    val priority: Int? = null,
+    val startAt: Instant? = null,
+    val endAt: Instant? = null,
+    val brandId: String? = null,
+    val branchId: String? = null,
+    val channel: String? = null,
+    val minQuantity: BigDecimal? = null,
+    val minAmount: BigDecimal? = null,
+    val discountRate: BigDecimal? = null,
+    val discountAmount: BigDecimal? = null,
+    val stackingPolicy: StackingPolicy? = null,
+    val usageLimit: Int? = null,
+    val perCustomerLimit: Int? = null,
+    val isActive: Boolean? = null
+)
+
+data class UpdatePromotionProductsRequestDto(
+    val eligibleProductIds: List<String> = emptyList(),
+    val rewardProductIds: List<String> = emptyList()
+)
+
+data class PromotionProductDto(
+    val id: String = "",
+    val promotionId: String = "",
+    val menuItemId: String = "",
+    val quantity: BigDecimal = BigDecimal.ONE
 )

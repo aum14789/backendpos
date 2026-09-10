@@ -182,6 +182,17 @@ data class SyncUserDto(
     val permissions: List<String> = emptyList()
 )
 
+data class SyncPrinterDto(
+    val printerId: String = "",
+    val branchId: String = "",
+    val name: String = "",
+    val ipAddress: String = "",
+    val port: Int = 9100,
+    val isDocumentPrinter: Boolean = false,
+    val isActive: Boolean = true,
+    val menuCategoryIds: List<String> = emptyList()
+)
+
 data class SyncDeltaResponse(
     val branchId: String = "",
     val sinceTimestamp: Instant = Instant.EPOCH,
@@ -193,6 +204,7 @@ data class SyncDeltaResponse(
     val tables: List<SyncTableDto> = emptyList(),
     val promotions: List<SyncPromotionDto> = emptyList(),
     val users: List<SyncUserDto> = emptyList(),
+    val printers: List<SyncPrinterDto> = emptyList(),
     val deviceCapabilities: List<String> = emptyList(),
     val crmPolicy: CrmPolicyDto = CrmPolicyDto(),
     val serverTime: Instant = Instant.now()
@@ -233,7 +245,9 @@ class SyncService(
     private val userRoleRepository: com.sunpos.backend.domain.identity.UserRoleRepository? = null,
     private val rolePermissionRepository: com.sunpos.backend.domain.identity.RolePermissionRepository? = null,
     private val permissionRepository: com.sunpos.backend.domain.identity.PermissionRepository? = null,
-    private val menuItemBranchRepository: com.sunpos.backend.domain.catalog.MenuItemBranchRepository? = null
+    private val menuItemBranchRepository: com.sunpos.backend.domain.catalog.MenuItemBranchRepository? = null,
+    private val printerRepository: com.sunpos.backend.domain.printer.PrinterRepository? = null,
+    private val printerMenuCategoryRepository: com.sunpos.backend.domain.printer.PrinterMenuCategoryRepository? = null
 ) {
     private val log = LoggerFactory.getLogger(SyncService::class.java)
 
@@ -796,6 +810,22 @@ class SyncService(
             emptyList()
         }
 
+        // 10. Printers (80mm thermal, config จาก Backoffice — ดู ADR 0005)
+        val printers = if (printerRepository != null) {
+            printerRepository.findByBranchIdAndIsActiveTrue(branchId).map { p ->
+                SyncPrinterDto(
+                    printerId = p.id,
+                    branchId = p.branchId.ifBlank { branchId },
+                    name = p.name,
+                    ipAddress = p.ipAddress,
+                    port = p.port,
+                    isDocumentPrinter = p.isDocumentPrinter,
+                    isActive = p.isActive,
+                    menuCategoryIds = printerMenuCategoryRepository?.findCategoryIdsByPrinterId(p.id) ?: emptyList()
+                )
+            }
+        } else emptyList()
+
         return SyncDeltaResponse(
             branchId = branchId,
             sinceTimestamp = since,
@@ -807,6 +837,7 @@ class SyncService(
             tables = tables,
             promotions = promotions,
             users = users,
+            printers = printers,
             deviceCapabilities = capabilities,
             crmPolicy = CrmPolicyDto(),
             serverTime = Instant.now()

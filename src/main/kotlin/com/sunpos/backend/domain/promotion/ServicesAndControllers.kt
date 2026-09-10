@@ -568,6 +568,177 @@ class PromotionService(
 
     fun listActivePromotions(): List<Promotion> = promotionRepository.findByIsActiveTrue()
 
+    fun listPromotions(
+        status: String? = null,
+        brandId: String? = null,
+        branchId: String? = null
+    ): List<PromotionDto> {
+        val all = promotionRepository.findAll()
+        return all
+            .filter { status == null || (status == "ACTIVE" && it.isActive) || (status == "INACTIVE" && !it.isActive) }
+            .filter { brandId == null || it.brandId == null || it.brandId == brandId }
+            .filter { branchId == null || it.branchId == null || it.branchId == branchId }
+            .sortedByDescending { it.priority }
+            .map { toDto(it) }
+    }
+
+    fun getPromotion(id: String): PromotionDto {
+        val promo = promotionRepository.findById(id)
+            .orElseThrow { IllegalArgumentException("Promotion not found with id: $id") }
+        return toDto(promo)
+    }
+
+    @Transactional
+    fun createPromotion(dto: CreatePromotionRequestDto): PromotionDto {
+        val cleanCode = dto.code.trim().uppercase()
+        if (cleanCode.isBlank()) {
+            throw IllegalArgumentException("รหัสโปรโมชั่นต้องไม่เป็นค่าว่าง")
+        }
+        if (promotionRepository.findByField("code", cleanCode).isNotEmpty()) {
+            throw IllegalArgumentException("รหัสโปรโมชั่น '$cleanCode' มีอยู่ในระบบแล้ว")
+        }
+        if (dto.promoType == PromotionType.PERCENTAGE && dto.discountRate > BigDecimal("100")) {
+            throw IllegalArgumentException("ส่วนลดเปอร์เซ็นต์ต้องไม่เกิน 100%")
+        }
+
+        val promo = Promotion(
+            id = UUID.randomUUID().toString(),
+            code = cleanCode,
+            name = dto.name,
+            description = dto.description,
+            promoType = dto.promoType,
+            priority = dto.priority,
+            isActive = true,
+            startAt = dto.startAt,
+            endAt = dto.endAt,
+            brandId = dto.brandId,
+            branchId = dto.branchId,
+            channel = dto.channel,
+            minQuantity = dto.minQuantity,
+            minAmount = dto.minAmount,
+            discountRate = dto.discountRate,
+            discountAmount = dto.discountAmount,
+            stackingPolicy = dto.stackingPolicy,
+            usageLimit = dto.usageLimit,
+            perCustomerLimit = dto.perCustomerLimit
+        )
+        val saved = promotionRepository.save(promo)
+
+        // Save eligible products
+        if (dto.eligibleProductIds.isNotEmpty()) {
+            for (menuItemId in dto.eligibleProductIds) {
+                eligibleProductRepository.save(
+                    PromotionEligibleProduct(promotionId = saved.id, menuItemId = menuItemId)
+                )
+            }
+        }
+
+        // Save reward products
+        if (dto.rewardProductIds.isNotEmpty()) {
+            for (menuItemId in dto.rewardProductIds) {
+                rewardProductRepository.save(
+                    PromotionRewardProduct(promotionId = saved.id, menuItemId = menuItemId)
+                )
+            }
+        }
+
+        return toDto(saved)
+    }
+
+    @Transactional
+    fun updatePromotion(id: String, dto: UpdatePromotionRequestDto): PromotionDto {
+        val promo = promotionRepository.findById(id)
+            .orElseThrow { IllegalArgumentException("Promotion not found with id: $id") }
+
+        dto.name?.let { promo.name = it }
+        dto.description?.let { promo.description = it }
+        dto.promoType?.let { promo.promoType = it }
+        dto.priority?.let { promo.priority = it }
+        dto.startAt?.let { promo.startAt = it }
+        dto.endAt?.let { promo.endAt = it }
+        dto.brandId?.let { promo.brandId = it }
+        dto.branchId?.let { promo.branchId = it }
+        dto.channel?.let { promo.channel = it }
+        dto.minQuantity?.let { promo.minQuantity = it }
+        dto.minAmount?.let { promo.minAmount = it }
+        dto.discountRate?.let { promo.discountRate = it }
+        dto.discountAmount?.let { promo.discountAmount = it }
+        dto.stackingPolicy?.let { promo.stackingPolicy = it }
+        dto.usageLimit?.let { promo.usageLimit = it }
+        dto.perCustomerLimit?.let { promo.perCustomerLimit = it }
+        dto.isActive?.let { promo.isActive = it }
+
+        val saved = promotionRepository.save(promo)
+        return toDto(saved)
+    }
+
+    @Transactional
+    fun updatePromotionProducts(id: String, dto: UpdatePromotionProductsRequestDto): PromotionDto {
+        val promo = promotionRepository.findById(id)
+            .orElseThrow { IllegalArgumentException("Promotion not found with id: $id") }
+
+        // Clear existing eligible products
+        val oldEligible = eligibleProductRepository.findByIdPromotionId(id)
+        eligibleProductRepository.deleteAll(oldEligible)
+
+        // Clear existing reward products
+        val oldReward = rewardProductRepository.findByIdPromotionId(id)
+        rewardProductRepository.deleteAll(oldReward)
+
+        // Save new eligible products
+        for (menuItemId in dto.eligibleProductIds) {
+            eligibleProductRepository.save(
+                PromotionEligibleProduct(promotionId = id, menuItemId = menuItemId)
+            )
+        }
+
+        // Save new reward products
+        for (menuItemId in dto.rewardProductIds) {
+            rewardProductRepository.save(
+                PromotionRewardProduct(promotionId = id, menuItemId = menuItemId)
+            )
+        }
+
+        return toDto(promo)
+    }
+
+    fun listEligibleProducts(promotionId: String): List<PromotionProductDto> {
+        return eligibleProductRepository.findByIdPromotionId(promotionId).map {
+            PromotionProductDto(id = it.id, promotionId = it.promotionId, menuItemId = it.menuItemId)
+        }
+    }
+
+    fun listRewardProducts(promotionId: String): List<PromotionProductDto> {
+        return rewardProductRepository.findByIdPromotionId(promotionId).map {
+            PromotionProductDto(id = it.id, promotionId = it.promotionId, menuItemId = it.menuItemId, quantity = it.quantity)
+        }
+    }
+
+    private fun toDto(p: Promotion): PromotionDto {
+        return PromotionDto(
+            id = p.id,
+            code = p.code,
+            name = p.name,
+            description = p.description,
+            promoType = p.promoType,
+            priority = p.priority,
+            isActive = p.isActive,
+            startAt = p.startAt,
+            endAt = p.endAt,
+            brandId = p.brandId,
+            branchId = p.branchId,
+            channel = p.channel,
+            minQuantity = p.minQuantity,
+            minAmount = p.minAmount,
+            discountRate = p.discountRate,
+            discountAmount = p.discountAmount,
+            stackingPolicy = p.stackingPolicy,
+            usageLimit = p.usageLimit,
+            perCustomerLimit = p.perCustomerLimit,
+            createdAt = p.createdAt
+        )
+    }
+
     @Transactional
     fun applyPromotionsToOrder(orderId: String, channel: String?, customerId: String?, couponCode: String? = null): BigDecimal {
         val order = orderRepository.findById(orderId).orElseThrow { IllegalArgumentException("Order not found") }
@@ -735,22 +906,9 @@ class PromotionService(
             }
         }
 
-        // Record coupon usage ledger if successful
-        if (couponCode != null && totalPromoDiscount > BigDecimal.ZERO) {
-            val cp = couponRepository.findByCode(couponCode).get()
-            cp.currentUses += 1
-            if (cp.currentUses >= cp.maxUses) {
-                cp.isUsed = true
-            }
-            couponRepository.save(cp)
-            redemptionLedgerRepository.save(
-                CouponRedemptionLedger(
-                    couponId = cp.id,
-                    customerId = customerId ?: "ANONYMOUS",
-                    orderId = orderId
-                )
-            )
-        }
+        // NOTE: Coupon usage recording (currentUses, isUsed, CouponRedemptionLedger)
+        // is handled exclusively by CouponService.redeemCoupon (ADR 0006 §8).
+        // This method only reads coupon state, never mutates it.
 
         order.discountAmount = totalPromoDiscount
         val pipelineCalc = calculationService.calculateFullOrderPipeline(
@@ -763,5 +921,66 @@ class PromotionService(
         order.totalAmount = pipelineCalc.grandTotal
         orderRepository.save(order)
         return totalPromoDiscount
+    }
+}
+
+@RestController
+@RequestMapping("/api/v1/promotions")
+class PromotionController(
+    private val promotionService: PromotionService
+) {
+    @GetMapping
+    fun listPromotions(
+        @RequestParam(required = false) status: String?,
+        @RequestParam(required = false) brandId: String?,
+        @RequestParam(required = false) branchId: String?
+    ): ApiResponse<List<PromotionDto>> {
+        val list = promotionService.listPromotions(status, brandId, branchId)
+        return ApiResponse.success(list)
+    }
+
+    @GetMapping("/{id}")
+    fun getPromotion(@PathVariable id: String): ApiResponse<PromotionDto> {
+        val promo = promotionService.getPromotion(id)
+        return ApiResponse.success(promo)
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAuthority('PROMOTION_MANAGE') or hasAuthority('COUPON_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_STORE_MANAGER') or hasAuthority('ROLE_BRANCH_MANAGER')")
+    fun createPromotion(@RequestBody dto: CreatePromotionRequestDto): ApiResponse<PromotionDto> {
+        val created = promotionService.createPromotion(dto)
+        return ApiResponse.success(created)
+    }
+
+    @PatchMapping("/{id}")
+    @PreAuthorize("hasAuthority('PROMOTION_MANAGE') or hasAuthority('COUPON_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_STORE_MANAGER') or hasAuthority('ROLE_BRANCH_MANAGER')")
+    fun updatePromotion(
+        @PathVariable id: String,
+        @RequestBody dto: UpdatePromotionRequestDto
+    ): ApiResponse<PromotionDto> {
+        val updated = promotionService.updatePromotion(id, dto)
+        return ApiResponse.success(updated)
+    }
+
+    @PutMapping("/{id}/products")
+    @PreAuthorize("hasAuthority('PROMOTION_MANAGE') or hasAuthority('COUPON_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_STORE_MANAGER') or hasAuthority('ROLE_BRANCH_MANAGER')")
+    fun updatePromotionProducts(
+        @PathVariable id: String,
+        @RequestBody dto: UpdatePromotionProductsRequestDto
+    ): ApiResponse<PromotionDto> {
+        val updated = promotionService.updatePromotionProducts(id, dto)
+        return ApiResponse.success(updated)
+    }
+
+    @GetMapping("/{id}/eligible-products")
+    fun listEligibleProducts(@PathVariable id: String): ApiResponse<List<PromotionProductDto>> {
+        val list = promotionService.listEligibleProducts(id)
+        return ApiResponse.success(list)
+    }
+
+    @GetMapping("/{id}/reward-products")
+    fun listRewardProducts(@PathVariable id: String): ApiResponse<List<PromotionProductDto>> {
+        val list = promotionService.listRewardProducts(id)
+        return ApiResponse.success(list)
     }
 }
