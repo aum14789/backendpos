@@ -24,6 +24,7 @@ class QrOrderService(
     private val menuCategoryRepository: MenuCategoryRepository,
     private val menuItemRepository: MenuItemRepository,
     private val qrOrderMenuItemSettingRepository: QrOrderMenuItemSettingRepository,
+    private val quarantinedQrOrderRepository: QuarantinedQrOrderRepository? = null,
     @org.springframework.context.annotation.Lazy
     private val branchOrderPushService: com.sunpos.backend.domain.websocket.BranchOrderPushService? = null,
     private val scheduledCatalogRepository: ScheduledCatalogRepository? = null,
@@ -59,6 +60,8 @@ class QrOrderService(
             customerNote = dto.customerNote?.trim()?.ifBlank { null },
             totalAmount = calculatedTotal,
             source = "qr",
+            cloudReceivedAt = Instant.now(),
+            orderedAt = Instant.now(),
             createdAt = Instant.now(),
             updatedAt = Instant.now()
         )
@@ -165,6 +168,8 @@ class QrOrderService(
             totalAmount = calculatedTotal,
             source = "qr",
             idempotencyKey = idempotencyKey?.trim()?.ifBlank { null },
+            cloudReceivedAt = Instant.now(),
+            orderedAt = Instant.now(),
             createdAt = Instant.now(),
             updatedAt = Instant.now()
         )
@@ -266,14 +271,34 @@ class QrOrderService(
 
     fun getPendingOrdersForBranch(branchId: String): List<QrOrderDetailsDto> {
         val allOrders = qrOrderRepository.findByField("branchId", branchId)
+        val cutoff = Instant.now().minus(java.time.Duration.ofMinutes(5))
         val pendingOrders = allOrders.filter { 
-            it.status == QrOrderStatus.pending || it.status == QrOrderStatus.sent_to_branch 
+            (it.status == QrOrderStatus.pending || it.status == QrOrderStatus.sent_to_branch) &&
+            it.createdAt.isAfter(cutoff)
         }.sortedBy { it.createdAt }
 
         return pendingOrders.map { order ->
             val items = qrOrderItemRepository.findByOrderId(order.id)
             QrOrderDetailsDto(order, items)
         }
+    }
+
+    fun getQuarantinedOrders(branchId: String, from: Instant? = null, to: Instant? = null): List<QuarantinedQrOrder> {
+        val repo = quarantinedQrOrderRepository ?: return emptyList()
+        return if (from != null && to != null) {
+            repo.findByBranchIdAndDateRange(branchId, from, to)
+        } else {
+            repo.findByBranchId(branchId)
+        }
+    }
+
+    @Transactional
+    fun markOrderPrinted(orderId: String): QrOrder {
+        val order = qrOrderRepository.findById(orderId)
+            .orElseThrow { NoSuchElementException("QR Order '$orderId' not found") }
+        order.printedAt = Instant.now()
+        order.updatedAt = Instant.now()
+        return qrOrderRepository.save(order)
     }
 
     @Transactional
@@ -502,6 +527,26 @@ class QrOrderController(
         val enabled = qrOrderService.getQrOrderEnabled(branchId)
             ?: return ResponseEntity.notFound().build()
         return ResponseEntity.ok(enabled)
+    }
+
+    @GetMapping("/branch/{branchId}/quarantined")
+    fun getQuarantinedOrders(
+        @PathVariable branchId: String,
+        @RequestParam(required = false) from: String?,
+        @RequestParam(required = false) to: String?
+    ): ApiResponse<List<QuarantinedQrOrder>> {
+        val fromInstant = if (!from.isNullOrBlank()) Instant.parse(from) else null
+        val toInstant = if (!to.isNullOrBlank()) Instant.parse(to) else null
+        return ApiResponse.success(qrOrderService.getQuarantinedOrders(branchId, fromInstant, toInstant))
+    }
+
+    @PostMapping("/orders/{orderId}/printed")
+    fun markOrderPrinted(
+        @PathVariable orderId: String
+    ): ApiResponse<QrOrderDetailsDto> {
+        val updated = qrOrderService.markOrderPrinted(orderId)
+        val items = qrOrderService.getOrderDetails(orderId).items
+        return ApiResponse.success(QrOrderDetailsDto(updated, items), "Order marked as printed")
     }
 
     @PostMapping("/branch/{branchId}/enabled")

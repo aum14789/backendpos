@@ -28,7 +28,8 @@ data class BranchOrderPushPayload(
     val customerNote: String?,
     val totalAmount: BigDecimal,
     val items: List<BranchOrderItemPayload>,
-    val createdAt: Instant
+    val createdAt: Instant,
+    val orderedAt: Instant? = null
 )
 
 @Service
@@ -67,7 +68,8 @@ class BranchOrderPushService(
             customerNote = order.customerNote,
             totalAmount = order.totalAmount,
             items = itemPayloads,
-            createdAt = order.createdAt
+            createdAt = order.createdAt,
+            orderedAt = order.orderedAt
         )
 
         val destination = "/topic/branch/$branchId/orders"
@@ -75,6 +77,7 @@ class BranchOrderPushService(
         logger.info("📤 Order [{}] pushed to Branch [{}] at [{}]", order.id, branchId, destination)
 
         order.status = QrOrderStatus.sent_to_branch
+        order.dispatchedAt = Instant.now()
         order.updatedAt = Instant.now()
         qrOrderRepository.save(order)
 

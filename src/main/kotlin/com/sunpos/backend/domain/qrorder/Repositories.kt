@@ -19,6 +19,25 @@ class QrOrderRepository(jdbcTemplate: JdbcTemplate) :
     fun findByIdempotencyKey(key: String): java.util.Optional<QrOrder> {
         return findOneByField("idempotencyKey", key)
     }
+
+    fun findTimedOutOrders(cutoff: java.time.Instant): List<QrOrder> {
+        val sql = "SELECT * FROM qr_orders WHERE status IN ('pending', 'sent_to_branch') AND created_at < ?"
+        return jdbcTemplate.query(sql, rowMapper, java.sql.Timestamp.from(cutoff))
+    }
+}
+
+@Repository
+class QuarantinedQrOrderRepository(jdbcTemplate: JdbcTemplate) :
+    JdbcRepository<QuarantinedQrOrder>(jdbcTemplate, "quarantined_qr_orders", QuarantinedQrOrder::class.java) {
+
+    fun findByBranchId(branchId: String): List<QuarantinedQrOrder> {
+        return findByField("branchId", branchId)
+    }
+
+    fun findByBranchIdAndDateRange(branchId: String, from: java.time.Instant, to: java.time.Instant): List<QuarantinedQrOrder> {
+        val sql = "SELECT * FROM quarantined_qr_orders WHERE branch_id = ? AND quarantined_at >= ? AND quarantined_at <= ? ORDER BY quarantined_at DESC"
+        return jdbcTemplate.query(sql, rowMapper, branchId, java.sql.Timestamp.from(from), java.sql.Timestamp.from(to))
+    }
 }
 
 @Repository

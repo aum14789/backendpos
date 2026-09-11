@@ -11,7 +11,8 @@ enum class QrOrderStatus {
     preparing,
     ready,
     completed,
-    cancelled
+    cancelled,
+    undelivered_timeout
 }
 
 data class QrOrder(
@@ -25,8 +26,30 @@ data class QrOrder(
     var totalAmount: BigDecimal = BigDecimal.ZERO,
     var source: String = "qr",
     var idempotencyKey: String? = null,
+    var cloudReceivedAt: Instant = Instant.now(),
+    var orderedAt: Instant = Instant.now(),
+    var dispatchedAt: Instant? = null,
+    var printedAt: Instant? = null,
     val createdAt: Instant = Instant.now(),
     var updatedAt: Instant = Instant.now()
+)
+
+data class QuarantinedQrOrder(
+    val id: String = UUID.randomUUID().toString(),
+    var branchId: String = "",
+    var tableNumber: String = "",
+    var tableId: String? = null,
+    var sessionId: String? = null,
+    var totalAmount: BigDecimal = BigDecimal.ZERO,
+    var customerNote: String? = null,
+    var source: String = "qr",
+    var idempotencyKey: String? = null,
+    var orderedAt: Instant? = null,
+    var cloudReceivedAt: Instant? = null,
+    val quarantinedAt: Instant = Instant.now(),
+    var reason: String = "UNDELIVERED_TIMEOUT",
+    var rawPayload: String? = null,
+    var isAcknowledged: Boolean = false
 )
 
 data class QrOrderItem(
