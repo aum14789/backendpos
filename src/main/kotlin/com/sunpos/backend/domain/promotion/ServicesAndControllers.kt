@@ -75,7 +75,8 @@ class CouponService(
     private val couponRepository: CouponRepository,
     private val couponRedemptionRepository: CouponRedemptionRepository,
     private val promotionRepository: PromotionRepository,
-    private val orderRepository: OrderRepository
+    private val orderRepository: OrderRepository,
+    private val orderAppliedPromotionRepository: OrderAppliedPromotionRepository
 ) {
     companion object {
         const val SCALE = 4
@@ -137,6 +138,9 @@ class CouponService(
             usageLimitPerCustomer = dto.usageLimitPerCustomer ?: 1,
             validFrom = dto.validFrom,
             validTo = dto.validTo,
+            activeDays = ActiveSchedule.formatDays(dto.activeDays).ifBlank { null },
+            activeStartTime = dto.activeStartTime?.trim()?.ifBlank { null },
+            activeEndTime = dto.activeEndTime?.trim()?.ifBlank { null },
             status = dto.status,
             maxUses = dto.usageLimitTotal ?: 1000,
             currentUses = 0,
@@ -165,6 +169,9 @@ class CouponService(
         dto.usageLimitPerCustomer?.let { coupon.usageLimitPerCustomer = it }
         dto.validFrom?.let { coupon.validFrom = it }
         dto.validTo?.let { coupon.validTo = it }
+        dto.activeDays?.let { coupon.activeDays = ActiveSchedule.formatDays(it).ifBlank { null } }
+        dto.activeStartTime?.let { coupon.activeStartTime = it.trim().ifBlank { null } }
+        dto.activeEndTime?.let { coupon.activeEndTime = it.trim().ifBlank { null } }
         dto.brandId?.let { coupon.brandId = it }
         dto.branchId?.let { coupon.branchId = it }
         dto.status?.let { coupon.status = it }
@@ -241,6 +248,18 @@ class CouponService(
                 couponId = coupon.id,
                 couponName = coupon.name ?: coupon.code,
                 message = "คูปองหมดอายุแล้ว"
+            )
+        }
+
+        // 2.5 Active Days & Time Window check (ADR 0009) — เวลาท้องถิ่นสาขา (Asia/Bangkok)
+        val localNow = now.atZone(ActiveSchedule.ZONE)
+        if (!ActiveSchedule.isScheduleActive(coupon.activeDays, coupon.activeStartTime, coupon.activeEndTime, localNow.toLocalDateTime())) {
+            return CouponValidationResponseDto(
+                isValid = false,
+                couponCode = coupon.code,
+                couponId = coupon.id,
+                couponName = coupon.name ?: coupon.code,
+                message = "คูปองนี้ใช้ได้เฉพาะ ${ActiveSchedule.describe(coupon.activeDays, coupon.activeStartTime, coupon.activeEndTime)}"
             )
         }
 
@@ -396,6 +415,55 @@ class CouponService(
             )
         )
 
+        // Grandfathered Redemption (ADR 0009): ถ้าคูปอง validate ไม่ผ่าน **เฉพาะเพราะหลุดวัน/เวลา
+        // เปิดใช้งาน** แต่เคย validate ผ่านมาก่อน (มี Applied Coupon บนบิลเดียวกัน) → รักษาสิทธิ์ไว้
+        // ไม่งั้น Guest Check ที่พิมพ์แล้วข้ามเที่ยงคืนจะค้าง กรณีอื่น (limit/status/minSpend ฯลฯ) ยัง fail ปกติ
+        if (!validation.isValid && validation.message.contains("ใช้ได้เฉพาะ")) {
+            val cp = couponOpt.get()
+            val hadApplied = couponRedemptionRepository.findByOrderId(dto.orderId).any { it.couponId == cp.id } ||
+                orderAppliedPromotionRepository.findByOrderId(dto.orderId).any { it.promotionCode.equals(cp.code, ignoreCase = true) }
+            if (hadApplied) {
+                // Grandfather path: ใช้ส่วนลดจากการ validate ครั้งก่อน (ดึงจาก applied promotion snapshot)
+                val applied = orderAppliedPromotionRepository.findByOrderId(dto.orderId)
+                    .firstOrNull { it.promotionCode.equals(cp.code, ignoreCase = true) }
+                val discount = applied?.discountAmount ?: validation.calculatedDiscountAmount
+                val existing = couponRedemptionRepository.findByOrderId(dto.orderId).firstOrNull { it.couponId == cp.id }
+                if (existing != null) {
+                    return RedeemCouponResponseDto(
+                        success = true,
+                        redemptionId = existing.id,
+                        couponCode = cp.code,
+                        couponName = cp.name ?: cp.code,
+                        discountAmount = existing.discountAmount,
+                        message = "คูปองได้รับการใช้กับออเดอร์นี้แล้ว (Idempotent)"
+                    )
+                }
+                val redemption = CouponRedemption(
+                    id = UUID.randomUUID().toString(),
+                    couponId = cp.id,
+                    customerId = dto.customerId,
+                    orderId = dto.orderId,
+                    discountAmount = discount,
+                    redeemedAt = Instant.now()
+                )
+                val saved = couponRedemptionRepository.save(redemption)
+                cp.currentUses += 1
+                val totalLimit = cp.usageLimitTotal ?: cp.maxUses
+                if (totalLimit > 0 && cp.currentUses >= totalLimit) {
+                    cp.isUsed = true
+                }
+                couponRepository.save(cp)
+                return RedeemCouponResponseDto(
+                    success = true,
+                    redemptionId = saved.id,
+                    couponCode = cp.code,
+                    couponName = cp.name ?: cp.code,
+                    discountAmount = discount,
+                    message = "แลกรับส่วนลดคูปองสำเร็จ (Grandfathered: คูปอง validate ผ่านก่อนหน้าวัน/เวลาเปลี่ยน)"
+                )
+            }
+        }
+
         if (!validation.isValid) {
             throw IllegalArgumentException(validation.message)
         }
@@ -472,6 +540,9 @@ class CouponService(
             currentUses = c.currentUses,
             validFrom = c.validFrom,
             validTo = c.validTo,
+            activeDays = c.activeDays,
+            activeStartTime = c.activeStartTime,
+            activeEndTime = c.activeEndTime,
             status = c.status,
             createdAt = c.createdAt,
             updatedAt = c.updatedAt
@@ -528,6 +599,7 @@ class CouponController(
     }
 
     @PostMapping("/redeem")
+    @PreAuthorize("hasAuthority('DISCOUNT_APPLY') or hasAuthority('COUPON_OVERRIDE') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_STORE_MANAGER') or hasAuthority('ROLE_CASHIER') or hasAuthority('ROLE_BRANCH_MANAGER')")
     fun redeemCoupon(@RequestBody dto: RedeemCouponRequestDto): ApiResponse<RedeemCouponResponseDto> {
         val result = couponService.redeemCoupon(dto)
         return ApiResponse.success(result)
@@ -620,7 +692,10 @@ class PromotionService(
             discountAmount = dto.discountAmount,
             stackingPolicy = dto.stackingPolicy,
             usageLimit = dto.usageLimit,
-            perCustomerLimit = dto.perCustomerLimit
+            perCustomerLimit = dto.perCustomerLimit,
+            activeDays = ActiveSchedule.formatDays(dto.activeDays).ifBlank { null },
+            activeStartTime = dto.activeStartTime?.trim()?.ifBlank { null },
+            activeEndTime = dto.activeEndTime?.trim()?.ifBlank { null }
         )
         val saved = promotionRepository.save(promo)
 
@@ -666,6 +741,9 @@ class PromotionService(
         dto.stackingPolicy?.let { promo.stackingPolicy = it }
         dto.usageLimit?.let { promo.usageLimit = it }
         dto.perCustomerLimit?.let { promo.perCustomerLimit = it }
+        dto.activeDays?.let { promo.activeDays = ActiveSchedule.formatDays(it).ifBlank { null } }
+        dto.activeStartTime?.let { promo.activeStartTime = it.trim().ifBlank { null } }
+        dto.activeEndTime?.let { promo.activeEndTime = it.trim().ifBlank { null } }
         dto.isActive?.let { promo.isActive = it }
 
         val saved = promotionRepository.save(promo)
@@ -735,6 +813,9 @@ class PromotionService(
             stackingPolicy = p.stackingPolicy,
             usageLimit = p.usageLimit,
             perCustomerLimit = p.perCustomerLimit,
+            activeDays = ActiveSchedule.parseDays(p.activeDays).toList(),
+            activeStartTime = p.activeStartTime,
+            activeEndTime = p.activeEndTime,
             createdAt = p.createdAt
         )
     }
@@ -756,6 +837,10 @@ class PromotionService(
             .filter { it.startAt.isBefore(Instant.now()) && it.endAt.isAfter(Instant.now()) }
             .filter { it.branchId == null || it.branchId == order.branchId }
             .filter { it.channel == null || it.channel.equals(channel, ignoreCase = true) }
+            .filter {
+                // Active Days & Time Window (ADR 0009) — เวลาท้องถิ่นสาขา
+                ActiveSchedule.isScheduleActive(it.activeDays, it.activeStartTime, it.activeEndTime, java.time.LocalDateTime.now(ActiveSchedule.ZONE))
+            }
             .sortedByDescending { it.priority }
 
         val grossSubtotal = items.map { it.subtotal }.fold(BigDecimal.ZERO) { acc, a -> acc.add(a) }

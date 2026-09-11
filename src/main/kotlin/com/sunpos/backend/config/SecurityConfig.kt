@@ -304,7 +304,7 @@ class JwtAuthenticationFilter(
                     listOf(
                         "ROLE_BRANCH_MANAGER", "ROLE_STORE_MANAGER", "ORGANIZATION_MANAGE",
                         "ORDER_VIEW", "ORDER_CREATE", "ORDER_CANCEL", "ORDER_VOID",
-                        "DISCOUNT_APPLY", "DISCOUNT_OVERRIDE", "PAYMENT_MANAGE", "PAYMENT_REFUND",
+                        "DISCOUNT_APPLY", "DISCOUNT_OVERRIDE", "COUPON_OVERRIDE", "PAYMENT_MANAGE", "PAYMENT_REFUND",
                         "SHIFT_MANAGE", "MENU_MANAGE", "BUFFET_MANAGE", "INVENTORY_VIEW",
                         "INVENTORY_ITEM_MANAGE", "STOCK_ADJUST", "STOCK_TRANSFER", "STOCK_COUNT",
                         "RECIPE_MANAGE", "PURCHASE_ORDER", "GOODS_RECEIVE", "CRM_MANAGE", "REPORT_SALES_VIEW"

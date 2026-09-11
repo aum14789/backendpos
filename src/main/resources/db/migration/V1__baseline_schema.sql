@@ -2262,6 +2262,7 @@ INSERT INTO permissions (id, code, description) VALUES
   ('perm-04', 'ORDER_VOID', 'Void completed financial orders'),
   ('perm-05', 'DISCOUNT_APPLY', 'Apply standard promotions and discounts'),
   ('perm-06', 'DISCOUNT_OVERRIDE', 'Override manual discount limits'),
+  ('perm-14', 'COUPON_OVERRIDE', 'Close bill with cash discount in place of a coupon outside its active days/time window (ADR 0009)'),
   ('perm-07', 'PAYMENT_REFUND', 'Process full or partial payment refunds'),
   ('perm-08', 'STOCK_ADJUST', 'Perform stock adjustments and counts'),
   ('perm-09', 'STOCK_TRANSFER', 'Initiate and receive warehouse stock transfers'),

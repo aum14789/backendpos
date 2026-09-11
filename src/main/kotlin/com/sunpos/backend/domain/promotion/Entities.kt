@@ -31,6 +31,72 @@ enum class CouponStatus {
     EXPIRED
 }
 
+/**
+ * Active Days & Time Window (ADR 0009)
+ * - activeDays: CSV ของรหัสวัน ISO (MON..SUN), NULL/ว่าง = ทุกวัน
+ * - activeStartTime/activeEndTime: "HH:MM" เวลาท้องถิ่นสาขา (Asia/Bangkok)
+ *   end <= start = หน้าต่างข้ามเที่ยงคืน; ข้อมูลเดิมที่ NULL = ใช้ได้ทั้งวัน
+ */
+object ActiveSchedule {
+    val DAY_CODES = listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+
+    /** เวลาท้องถิ่นสาขา (ADR 0009) — v1 hardcode; ถ้ามีสาขาต่างประเทศต้องเพิ่ม timezone ที่ Branch */
+    val ZONE: java.time.ZoneId = java.time.ZoneId.of("Asia/Bangkok")
+
+    fun parseDays(csv: String?): Set<String> {
+        if (csv.isNullOrBlank()) return DAY_CODES.toSet()
+        return csv.split(",").map { it.trim().uppercase() }.filter { it in DAY_CODES }.toSet()
+    }
+
+    fun formatDays(days: Collection<String>): String =
+        days.map { it.trim().uppercase() }.filter { it in DAY_CODES }.distinct().joinToString(",")
+
+    /** คำอธิบายกำหนดการสำหรับแสดงข้อความผู้ใช้ เช่น "วันจันทร์, วันพุธ 11:00–14:00" */
+    fun describe(activeDays: String?, startTime: String?, endTime: String?): String {
+        val dayNames = mapOf(
+            "MON" to "วันจันทร์", "TUE" to "วันอังคาร", "WED" to "วันพุธ",
+            "THU" to "วันพฤหัสบดี", "FRI" to "วันศุกร์", "SAT" to "วันเสาร์", "SUN" to "วันอาทิตย์"
+        )
+        val days = parseDays(activeDays)
+        val dayText = if (days.size == DAY_CODES.size) "ทุกวัน"
+        else days.mapNotNull { dayNames[it] }.ifEmpty { listOf("ทุกวัน") }.joinToString(" ")
+        val hasTime = !startTime.isNullOrBlank() && !endTime.isNullOrBlank()
+        val timeText = if (hasTime) " เวลา $startTime–$endTime" else ""
+        return "$dayText$timeText"
+    }
+
+    /** วันนี้ (Asia/Bangkok) อยู่ใน activeDays หรือไม่ (ว่าง = ทุกวัน) */
+    fun isDayActive(activeDays: String?, localDate: java.time.LocalDate): Boolean {
+        val allowed = parseDays(activeDays)
+        if (allowed.size == DAY_CODES.size) return true
+        val code = when (localDate.dayOfWeek) {
+            java.time.DayOfWeek.MONDAY -> "MON"
+            java.time.DayOfWeek.TUESDAY -> "TUE"
+            java.time.DayOfWeek.WEDNESDAY -> "WED"
+            java.time.DayOfWeek.THURSDAY -> "THU"
+            java.time.DayOfWeek.FRIDAY -> "FRI"
+            java.time.DayOfWeek.SATURDAY -> "SAT"
+            java.time.DayOfWeek.SUNDAY -> "SUN"
+        }
+        return code in allowed
+    }
+
+    /** เวลาปัจจุบัน (นาฬิกาปฏิทิน) อยู่ในหน้าต่างเวลาหรือไม่ (ว่าง = ทั้งวัน, ข้ามเที่ยงคืนได้) */
+    fun isTimeActive(startTime: String?, endTime: String?, localTime: java.time.LocalTime): Boolean {
+        if (startTime.isNullOrBlank() || endTime.isNullOrBlank()) return true
+        val start = runCatching { java.time.LocalTime.parse(startTime) }.getOrNull() ?: return true
+        val end = runCatching { java.time.LocalTime.parse(endTime) }.getOrNull() ?: return true
+        return if (start <= end) localTime >= start && localTime <= end
+        else localTime >= start || localTime <= end // ข้ามเที่ยงคืน: 20:00–02:00
+    }
+
+    /** ตรวจทั้งวันและเวลาด้วยเวลาท้องถิ่นสาขา */
+    fun isScheduleActive(activeDays: String?, startTime: String?, endTime: String?, localDateTime: java.time.LocalDateTime): Boolean {
+        return isDayActive(activeDays, localDateTime.toLocalDate()) &&
+            isTimeActive(startTime, endTime, localDateTime.toLocalTime())
+    }
+}
+
 class Promotion(
     val id: String = UUID.randomUUID().toString(),
     var code: String = "",
@@ -51,6 +117,9 @@ class Promotion(
     var stackingPolicy: StackingPolicy = StackingPolicy.STACKABLE,
     var usageLimit: Int? = null,
     var perCustomerLimit: Int? = null,
+    var activeDays: String? = null,
+    var activeStartTime: String? = null,
+    var activeEndTime: String? = null,
     val createdAt: Instant = Instant.now()
 )
 
@@ -71,6 +140,9 @@ class Coupon(
     var usageLimitPerCustomer: Int? = 1,
     var validFrom: Instant? = null,
     var validTo: Instant? = null,
+    var activeDays: String? = null,
+    var activeStartTime: String? = null,
+    var activeEndTime: String? = null,
     var status: CouponStatus = CouponStatus.ACTIVE,
     var isUsed: Boolean = false,
     var maxUses: Int = 1,
@@ -172,6 +244,9 @@ data class CouponDto(
     val currentUses: Int = 0,
     val validFrom: Instant? = null,
     val validTo: Instant? = null,
+    val activeDays: String? = null,
+    val activeStartTime: String? = null,
+    val activeEndTime: String? = null,
     val status: CouponStatus = CouponStatus.ACTIVE,
     val createdAt: Instant = Instant.now(),
     val updatedAt: Instant = Instant.now()
@@ -189,6 +264,9 @@ data class CreateCouponRequestDto(
     val usageLimitPerCustomer: Int? = 1,
     val validFrom: Instant? = null,
     val validTo: Instant? = null,
+    val activeDays: List<String> = emptyList(),
+    val activeStartTime: String? = null,
+    val activeEndTime: String? = null,
     val brandId: String? = null,
     val branchId: String? = null,
     val status: CouponStatus = CouponStatus.ACTIVE
@@ -205,6 +283,9 @@ data class UpdateCouponRequestDto(
     val usageLimitPerCustomer: Int? = null,
     val validFrom: Instant? = null,
     val validTo: Instant? = null,
+    val activeDays: List<String>? = null,
+    val activeStartTime: String? = null,
+    val activeEndTime: String? = null,
     val brandId: String? = null,
     val branchId: String? = null,
     val status: CouponStatus? = null
@@ -281,6 +362,9 @@ data class PromotionDto(
     val stackingPolicy: StackingPolicy = StackingPolicy.STACKABLE,
     val usageLimit: Int? = null,
     val perCustomerLimit: Int? = null,
+    val activeDays: List<String> = emptyList(),
+    val activeStartTime: String? = null,
+    val activeEndTime: String? = null,
     val createdAt: Instant = Instant.now()
 )
 
@@ -302,6 +386,9 @@ data class CreatePromotionRequestDto(
     val stackingPolicy: StackingPolicy = StackingPolicy.STACKABLE,
     val usageLimit: Int? = null,
     val perCustomerLimit: Int? = null,
+    val activeDays: List<String> = emptyList(),
+    val activeStartTime: String? = null,
+    val activeEndTime: String? = null,
     val eligibleProductIds: List<String> = emptyList(),
     val rewardProductIds: List<String> = emptyList()
 )
@@ -323,6 +410,9 @@ data class UpdatePromotionRequestDto(
     val stackingPolicy: StackingPolicy? = null,
     val usageLimit: Int? = null,
     val perCustomerLimit: Int? = null,
+    val activeDays: List<String>? = null,
+    val activeStartTime: String? = null,
+    val activeEndTime: String? = null,
     val isActive: Boolean? = null
 )
 
