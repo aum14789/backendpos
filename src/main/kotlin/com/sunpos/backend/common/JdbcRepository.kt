@@ -25,7 +25,8 @@ import java.util.concurrent.ConcurrentHashMap
 abstract class JdbcRepository<T : Any>(
     protected val jdbcTemplate: JdbcTemplate,
     val tableName: String,
-    private val entityClass: Class<T>
+    private val entityClass: Class<T>,
+    val idColumn: String = "id"
 ) {
     protected val logger = LoggerFactory.getLogger(javaClass)
 
@@ -69,6 +70,19 @@ abstract class JdbcRepository<T : Any>(
         } catch (e: Exception) {
             UUID.randomUUID().toString()
         }
+    }
+
+    open fun resolveIdColumn(columns: List<String>? = null): String {
+        if (columns != null) {
+            if (columns.contains(idColumn)) return idColumn
+            if (columns.contains("id")) return "id"
+            if (columns.contains("event_id")) return "event_id"
+            if (columns.contains("device_id")) return "device_id"
+        }
+        if (idColumn != "id") return idColumn
+        if (tableName == "sync_events") return "event_id"
+        if (tableName == "device_sync_states") return "device_id"
+        return idColumn
     }
 
     // ──────────────────────────── RowMapper ────────────────────────────
@@ -185,8 +199,9 @@ abstract class JdbcRepository<T : Any>(
 
     open fun findById(id: Any): Optional<T> {
         val idStr = id.toString()
+        val pkCol = resolveIdColumn()
         try {
-            val list = jdbcTemplate.query("SELECT * FROM $tableName WHERE id = ?", rowMapper, idStr)
+            val list = jdbcTemplate.query("SELECT * FROM $tableName WHERE $pkCol = ?", rowMapper, idStr)
             val found = list.firstOrNull()
             if (found != null) {
                 localCache[idStr] = found
@@ -331,11 +346,12 @@ abstract class JdbcRepository<T : Any>(
             }
         }
 
+        val actualIdCol = resolveIdColumn(columns)
         val placeholders = columns.map { "?" }.joinToString(", ")
-        val updateSet = columns.filter { it != "id" }.joinToString(", ") { "$it = EXCLUDED.$it" }
+        val updateSet = columns.filter { it != actualIdCol }.joinToString(", ") { "$it = EXCLUDED.$it" }
 
         val sql = "INSERT INTO $tableName (${columns.joinToString(", ")}) VALUES ($placeholders)" +
-                if (updateSet.isNotEmpty()) " ON CONFLICT (id) DO UPDATE SET $updateSet" else " ON CONFLICT (id) DO NOTHING"
+                if (updateSet.isNotEmpty()) " ON CONFLICT ($actualIdCol) DO UPDATE SET $updateSet" else " ON CONFLICT ($actualIdCol) DO NOTHING"
 
         try {
             jdbcTemplate.update(sql, *values.toTypedArray())
@@ -355,8 +371,9 @@ abstract class JdbcRepository<T : Any>(
     open fun deleteById(id: Any) {
         val idStr = id.toString()
         localCache.remove(idStr)
+        val pkCol = resolveIdColumn()
         try {
-            jdbcTemplate.update("DELETE FROM $tableName WHERE id = ?", idStr)
+            jdbcTemplate.update("DELETE FROM $tableName WHERE $pkCol = ?", idStr)
         } catch (e: Exception) {
             logger.debug("JDBC delete failed for {}/{}: {}", tableName, idStr, e.message)
         }
@@ -382,8 +399,9 @@ abstract class JdbcRepository<T : Any>(
     open fun existsById(id: Any): Boolean {
         val idStr = id.toString()
         if (localCache.containsKey(idStr)) return true
+        val pkCol = resolveIdColumn()
         return try {
-            val count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM $tableName WHERE id = ?", Long::class.java, idStr)
+            val count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM $tableName WHERE $pkCol = ?", Long::class.java, idStr)
             (count ?: 0) > 0
         } catch (e: Exception) {
             false

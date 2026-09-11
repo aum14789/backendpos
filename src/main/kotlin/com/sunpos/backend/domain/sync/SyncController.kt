@@ -38,7 +38,7 @@ class SyncEvent(
 }
 
 @Repository
-class SyncEventRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<SyncEvent>(jdbcTemplate, "sync_events", SyncEvent::class.java)
+class SyncEventRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<SyncEvent>(jdbcTemplate, "sync_events", SyncEvent::class.java, "event_id")
 
 class DeviceSyncState(
     val deviceId: String = "",
@@ -55,7 +55,7 @@ class DeviceSyncState(
 }
 
 @Repository
-class DeviceSyncStateRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<DeviceSyncState>(jdbcTemplate, "device_sync_states", DeviceSyncState::class.java)
+class DeviceSyncStateRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<DeviceSyncState>(jdbcTemplate, "device_sync_states", DeviceSyncState::class.java, "device_id")
 
 data class SyncPushRequest(
     val events: List<SyncEventDto> = emptyList(),
