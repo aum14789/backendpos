@@ -77,7 +77,8 @@ class CatalogService(
     private val comboGroupRepository: ComboGroupRepository,
     private val comboChoiceRepository: ComboChoiceRepository,
     private val menuItemBranchRepository: MenuItemBranchRepository,
-    private val jdbcTemplate: JdbcTemplate
+    private val jdbcTemplate: JdbcTemplate,
+    private val branchRepository: com.sunpos.backend.domain.organization.BranchRepository? = null
 ) {
     fun listCategories(branchId: String? = null): List<MenuCategory> {
         return if (!branchId.isNullOrBlank()) {
@@ -122,6 +123,65 @@ class CatalogService(
         return !itemRepository.existsById(trimmed)
     }
 
+    fun validateComboBranchAssignment(
+        menuItemId: String?,
+        comboGroups: List<ComboGroupCreateDto>,
+        targetBranchIds: List<String>
+    ): List<Map<String, Any>> {
+        val effectiveItemIds = if (comboGroups.isNotEmpty()) {
+            comboGroups.flatMap { it.choices.map { c -> c.menuItemId } }.filter { it.isNotBlank() }.distinct()
+        } else if (menuItemId != null) {
+            val defOpt = comboDefinitionRepository.findByMenuItemId(menuItemId)
+            if (defOpt.isPresent) {
+                val groups = comboGroupRepository.findByComboDefinitionId(defOpt.get().id)
+                val choices = groups.flatMap { comboChoiceRepository.findByComboGroupId(it.id) }
+                choices.map { it.menuItemId }.filter { it.isNotBlank() }.distinct()
+            } else emptyList()
+        } else emptyList()
+
+        if (effectiveItemIds.isEmpty() || targetBranchIds.isEmpty()) return emptyList()
+
+        val results = mutableListOf<Map<String, Any>>()
+        val allItems = itemRepository.findAll().associateBy { it.id }
+
+        for (bId in targetBranchIds) {
+            val branch = branchRepository?.findById(bId)?.orElse(null)
+            val branchName = branch?.name ?: bId
+            val branchLinks = menuItemBranchRepository.findByBranchId(bId).filter { it.isActive }
+            val directItems = itemRepository.findByBranchId(bId).filter { it.isActive }
+            val availableItemIds = (branchLinks.map { it.menuItemId } + directItems.map { it.id }).toSet()
+
+            val missingList = mutableListOf<Map<String, String>>()
+            for (cId in effectiveItemIds) {
+                val comp = allItems[cId]
+                val isCompActive = comp != null && comp.isActive && comp.availability != "DISABLED"
+                val isInBranch = availableItemIds.contains(cId)
+
+                if (!isCompActive || !isInBranch) {
+                    val reason = if (!isCompActive) "รายการถูกปิดใช้งานในระบบ" else "ยังไม่มีในสาขา $branchName"
+                    missingList.add(
+                        mapOf(
+                            "itemId" to cId,
+                            "itemName" to (comp?.name ?: cId),
+                            "reason" to reason
+                        )
+                    )
+                }
+            }
+
+            if (missingList.isNotEmpty()) {
+                results.add(
+                    mapOf(
+                        "branchId" to bId,
+                        "branchName" to branchName,
+                        "missingItems" to missingList
+                    )
+                )
+            }
+        }
+        return results
+    }
+
     @Transactional
     fun createMenuItem(dto: MenuItemCreateDto): MenuItemResponseDto {
         checkNameUnique(dto.name)
@@ -129,13 +189,27 @@ class CatalogService(
             checkIdUnique(dto.id)
         }
 
-        val assignedId = dto.id?.trim()?.ifBlank { null } ?: UUID.randomUUID().toString()
-        if (itemRepository.existsById(assignedId)) {
-            throw IllegalArgumentException("รหัสสินค้า (ID) '$assignedId' มีอยู่ในระบบแล้ว ห้ามใช้ ID ซ้ำกันโดยเด็ดขาด")
+        // Validate branch assignment for Combo / Set Menu (Type 'S')
+        val targetBranchIds = if (dto.branchAssignments.isNotEmpty()) {
+            dto.branchAssignments.filter { it.isActive }.map { it.branchId }
+        } else if (dto.branchId.isNotBlank()) {
+            listOf(dto.branchId)
+        } else emptyList()
+
+        if (targetBranchIds.isNotEmpty() && (dto.isCombo || dto.specialType == "S" || dto.comboGroups.isNotEmpty())) {
+            val missing = validateComboBranchAssignment(null, dto.comboGroups, targetBranchIds)
+            if (missing.isNotEmpty()) {
+                val details = missing.joinToString("\n") { r ->
+                    val bName = r["branchName"] as String
+                    val items = (r["missingItems"] as List<Map<String, String>>).map { it["itemName"] }
+                    "• สาขา $bName ขาดรายการ: ${items.joinToString(", ")}"
+                }
+                throw IllegalArgumentException("ไม่สามารถนำรายการชุดเข้าสาขาได้เนื่องจากมีรายการในชุดไม่ครบในสาขา:\n$details")
+            }
         }
 
         val item = MenuItem(
-            id = assignedId,
+            id = if (!dto.id.isNullOrBlank()) dto.id else UUID.randomUUID().toString(),
             branchId = dto.branchId,
             brandId = dto.brandId,
             categoryId = dto.categoryId,
@@ -156,13 +230,14 @@ class CatalogService(
             kitchenStation = dto.kitchenStation ?: "MAIN_KITCHEN",
             imageUrl = dto.imageUrl
         )
+
         val saved = itemRepository.save(item)
 
         for (mgId in dto.modifierGroupIds) {
             menuItemModifierGroupRepository.save(MenuItemModifierGroup(menuItemId = saved.id, modifierGroupId = mgId))
         }
 
-        if (dto.isCombo) {
+        if (dto.isCombo || dto.specialType == "S" || dto.comboGroups.isNotEmpty()) {
             val comboDef = comboDefinitionRepository.save(
                 ComboDefinition(menuItemId = saved.id, name = dto.name)
             )
@@ -173,17 +248,21 @@ class CatalogService(
                         name = groupDto.name,
                         minSelection = groupDto.minSelection,
                         maxSelection = groupDto.maxSelection,
+                        seqOrder = groupDto.seqOrder,
                         sortOrder = groupIndex
                     )
                 )
-                groupDto.choices.forEach { choiceDto ->
+                groupDto.choices.forEachIndexed { choiceIndex, choiceDto ->
                     comboChoiceRepository.save(
                         ComboChoice(
                             comboGroupId = group.id,
                             menuItemId = choiceDto.menuItemId,
                             priceOverride = choiceDto.priceOverride,
-                            surcharge = choiceDto.surcharge,
-                            isFree = choiceDto.isFree
+                            surcharge = BigDecimal.ZERO, // Flat Pricing (ADR 0008)
+                            isFree = choiceDto.isFree,
+                            quantity = choiceDto.quantity,
+                            isDefault = choiceDto.isDefault,
+                            sortOrder = choiceIndex
                         )
                     )
                 }
@@ -224,6 +303,25 @@ class CatalogService(
 
         checkNameUnique(dto.name, excludeId = id)
 
+        // Validate branch assignment for Combo / Set Menu (Type 'S')
+        val targetBranchIds = if (dto.branchAssignments.isNotEmpty()) {
+            dto.branchAssignments.filter { it.isActive }.map { it.branchId }
+        } else if (dto.branchId.isNotBlank()) {
+            listOf(dto.branchId)
+        } else emptyList()
+
+        if (targetBranchIds.isNotEmpty() && (dto.isCombo || dto.specialType == "S" || dto.comboGroups.isNotEmpty())) {
+            val missing = validateComboBranchAssignment(id, dto.comboGroups, targetBranchIds)
+            if (missing.isNotEmpty()) {
+                val details = missing.joinToString("\n") { r ->
+                    val bName = r["branchName"] as String
+                    val items = (r["missingItems"] as List<Map<String, String>>).map { it["itemName"] }
+                    "• สาขา $bName ขาดรายการ: ${items.joinToString(", ")}"
+                }
+                throw IllegalArgumentException("ไม่สามารถนำรายการชุดเข้าสาขาได้เนื่องจากมีรายการในชุดไม่ครบในสาขา:\n$details")
+            }
+        }
+
         if (dto.branchId.isNotBlank()) item.branchId = dto.branchId
         if (dto.brandId != null) item.brandId = dto.brandId
         if (dto.categoryId.isNotBlank()) item.categoryId = dto.categoryId
@@ -245,6 +343,52 @@ class CatalogService(
         if (dto.imageUrl != null) item.imageUrl = dto.imageUrl
         item.updatedAt = Instant.now()
         itemRepository.save(item)
+
+        // Update Combo definition if applicable
+        if (dto.isCombo || dto.specialType == "S" || dto.comboGroups.isNotEmpty()) {
+            val existingDefOpt = comboDefinitionRepository.findByMenuItemId(id)
+            if (existingDefOpt.isPresent) {
+                val def = existingDefOpt.get()
+                val oldGroups = comboGroupRepository.findByComboDefinitionId(def.id)
+                oldGroups.forEach { g ->
+                    val oldChoices = comboChoiceRepository.findByComboGroupId(g.id)
+                    oldChoices.forEach { comboChoiceRepository.deleteById(it.id) }
+                    comboGroupRepository.deleteById(g.id)
+                }
+                comboDefinitionRepository.deleteById(def.id)
+            }
+            if (dto.comboGroups.isNotEmpty()) {
+                val comboDef = comboDefinitionRepository.save(
+                    ComboDefinition(menuItemId = id, name = dto.name)
+                )
+                dto.comboGroups.forEachIndexed { groupIndex, groupDto ->
+                    val group = comboGroupRepository.save(
+                        ComboGroup(
+                            comboDefinitionId = comboDef.id,
+                            name = groupDto.name,
+                            minSelection = groupDto.minSelection,
+                            maxSelection = groupDto.maxSelection,
+                            seqOrder = groupDto.seqOrder,
+                            sortOrder = groupIndex
+                        )
+                    )
+                    groupDto.choices.forEachIndexed { choiceIndex, choiceDto ->
+                        comboChoiceRepository.save(
+                            ComboChoice(
+                                comboGroupId = group.id,
+                                menuItemId = choiceDto.menuItemId,
+                                priceOverride = choiceDto.priceOverride,
+                                surcharge = BigDecimal.ZERO, // Flat Pricing (ADR 0008)
+                                isFree = choiceDto.isFree,
+                                quantity = choiceDto.quantity,
+                                isDefault = choiceDto.isDefault,
+                                sortOrder = choiceIndex
+                            )
+                        )
+                    }
+                }
+            }
+        }
 
         // Update branch assignments if provided
         if (dto.branchAssignments.isNotEmpty()) {
@@ -392,8 +536,8 @@ class CatalogService(
         val comboDefDto = if (comboDefOpt.isPresent) {
             val comboDef = comboDefOpt.get()
             val groups = comboGroupRepository.findByComboDefinitionId(comboDef.id)
-            val groupDtos = groups.map { g ->
-                val choices = comboChoiceRepository.findByComboGroupId(g.id)
+            val groupDtos = groups.sortedBy { it.seqOrder }.map { g ->
+                val choices = comboChoiceRepository.findByComboGroupId(g.id).sortedBy { it.sortOrder }
                 val choiceDtos = choices.map { c ->
                     val choiceItem = itemRepository.findById(c.menuItemId).orElse(null)
                     ComboChoiceResponseDto(
@@ -402,7 +546,9 @@ class CatalogService(
                         itemName = choiceItem?.name ?: "Unknown",
                         priceOverride = c.priceOverride,
                         surcharge = c.surcharge,
-                        isFree = c.isFree
+                        isFree = c.isFree,
+                        quantity = c.quantity,
+                        isDefault = c.isDefault
                     )
                 }
                 ComboGroupResponseDto(
@@ -410,6 +556,7 @@ class CatalogService(
                     name = g.name,
                     minSelection = g.minSelection,
                     maxSelection = g.maxSelection,
+                    seqOrder = g.seqOrder,
                     choices = choiceDtos
                 )
             }
@@ -504,6 +651,23 @@ class CatalogService(
             request.allocations.flatMap { it.branchIds }.toSet()
         }
 
+        // Validate combo assignments for batch allocation
+        for (entry in request.allocations) {
+            val item = itemRepository.findById(entry.menuItemId).orElse(null)
+            if (item != null && (item.specialType == "S" || item.itemType == "COMBO")) {
+                val activeTargetBranches = entry.branchIds.filter { branchScope.contains(it) }
+                val missing = validateComboBranchAssignment(entry.menuItemId, emptyList(), activeTargetBranches)
+                if (missing.isNotEmpty()) {
+                    val details = missing.joinToString("\n") { r ->
+                        val bName = r["branchName"] as String
+                        val items = (r["missingItems"] as List<Map<String, String>>).map { it["itemName"] }
+                        "• สาขา $bName ขาดรายการ: ${items.joinToString(", ")}"
+                    }
+                    throw IllegalArgumentException("ไม่สามารถนำรายการชุด '${item.name}' เข้าสาขาได้เนื่องจากมีรายการในชุดไม่ครบ:\n$details")
+                }
+            }
+        }
+
         for (entry in request.allocations) {
             val itemId = entry.menuItemId
             val brandId = entry.brandId
@@ -541,11 +705,28 @@ class CatalogService(
     }
 }
 
+data class ValidateComboBranchRequest(
+    val menuItemId: String? = null,
+    val comboGroups: List<ComboGroupCreateDto> = emptyList(),
+    val branchIds: List<String> = emptyList()
+)
+
 @RestController
 @RequestMapping("/api/v1/catalog")
 class CatalogController(
     private val catalogService: CatalogService
 ) {
+    @PostMapping("/items/validate-combo-branch", "/menu-items/validate-combo-branch")
+    fun validateComboBranch(@RequestBody req: ValidateComboBranchRequest): ApiResponse<Map<String, Any>> {
+        val missing = catalogService.validateComboBranchAssignment(req.menuItemId, req.comboGroups, req.branchIds)
+        return ApiResponse.success(
+            mapOf(
+                "isValid" to missing.isEmpty(),
+                "errors" to missing
+            ),
+            if (missing.isEmpty()) "สาขามีรายการในชุดครบถ้วน" else "พบรายการในชุดที่ยังไม่มีหรือไม่เปิดใช้งานในบางสาขา"
+        )
+    }
     @GetMapping("/categories")
     fun getCategories(@RequestParam(required = false) branchId: String?): ApiResponse<List<MenuCategory>> {
         return ApiResponse.success(catalogService.listCategories(branchId))

@@ -122,7 +122,35 @@ data class SyncMenuItemDto(
     val sortOrder: Int = 0,
     val isActive: Boolean = true,
     val allowDecimal: Boolean = false,
-    val unitName: String? = null
+    val unitName: String? = null,
+    val specialType: String? = null
+)
+
+data class SyncComboChoiceDto(
+    val id: String = "",
+    val comboGroupId: String = "",
+    val menuItemId: String = "",
+    val quantity: Double = 1.0,
+    val isDefault: Boolean = false,
+    val sortOrder: Int = 0
+)
+
+data class SyncComboGroupDto(
+    val id: String = "",
+    val comboDefinitionId: String = "",
+    val name: String = "",
+    val minSelection: Int = 1,
+    val maxSelection: Int = 1,
+    val seqOrder: Int = 1,
+    val sortOrder: Int = 0,
+    val choices: List<SyncComboChoiceDto> = emptyList()
+)
+
+data class SyncComboDefinitionDto(
+    val id: String = "",
+    val menuItemId: String = "",
+    val name: String = "",
+    val groups: List<SyncComboGroupDto> = emptyList()
 )
 
 data class SyncBuffetTierDto(
@@ -205,6 +233,7 @@ data class SyncDeltaResponse(
     val promotions: List<SyncPromotionDto> = emptyList(),
     val users: List<SyncUserDto> = emptyList(),
     val printers: List<SyncPrinterDto> = emptyList(),
+    val comboDefinitions: List<SyncComboDefinitionDto> = emptyList(),
     val deviceCapabilities: List<String> = emptyList(),
     val crmPolicy: CrmPolicyDto = CrmPolicyDto(),
     val serverTime: Instant = Instant.now()
@@ -247,7 +276,10 @@ class SyncService(
     private val permissionRepository: com.sunpos.backend.domain.identity.PermissionRepository? = null,
     private val menuItemBranchRepository: com.sunpos.backend.domain.catalog.MenuItemBranchRepository? = null,
     private val printerRepository: com.sunpos.backend.domain.printer.PrinterRepository? = null,
-    private val printerMenuCategoryRepository: com.sunpos.backend.domain.printer.PrinterMenuCategoryRepository? = null
+    private val printerMenuCategoryRepository: com.sunpos.backend.domain.printer.PrinterMenuCategoryRepository? = null,
+    private val comboDefinitionRepository: com.sunpos.backend.domain.catalog.ComboDefinitionRepository? = null,
+    private val comboGroupRepository: com.sunpos.backend.domain.catalog.ComboGroupRepository? = null,
+    private val comboChoiceRepository: com.sunpos.backend.domain.catalog.ComboChoiceRepository? = null
 ) {
     private val log = LoggerFactory.getLogger(SyncService::class.java)
 
@@ -675,8 +707,9 @@ class SyncService(
                 imageUrl = m.imageUrl,
                 sortOrder = m.sortOrder,
                 isActive = m.isActive,
-                allowDecimal = false,
-                unitName = null
+                allowDecimal = m.allowDecimalQty,
+                unitName = null,
+                specialType = m.specialType
             )
         }
 
@@ -826,6 +859,49 @@ class SyncService(
             }
         } else emptyList()
 
+        // 10. Combo Definitions for Set items
+        val comboDefinitions = mutableListOf<SyncComboDefinitionDto>()
+        if (comboDefinitionRepository != null && comboGroupRepository != null && comboChoiceRepository != null) {
+            val comboItems = rawMenuItems.filter { it.specialType == "S" || it.itemType == "COMBO" }
+            for (ci in comboItems) {
+                val defOpt = comboDefinitionRepository.findByMenuItemId(ci.id)
+                if (defOpt.isPresent) {
+                    val def = defOpt.get()
+                    val groups = comboGroupRepository.findByComboDefinitionId(def.id).sortedBy { it.seqOrder }
+                    val groupDtos = groups.map { g ->
+                        val choices = comboChoiceRepository.findByComboGroupId(g.id).sortedBy { it.sortOrder }
+                        SyncComboGroupDto(
+                            id = g.id,
+                            comboDefinitionId = def.id,
+                            name = g.name,
+                            minSelection = g.minSelection,
+                            maxSelection = g.maxSelection,
+                            seqOrder = g.seqOrder,
+                            sortOrder = g.sortOrder,
+                            choices = choices.map { ch ->
+                                SyncComboChoiceDto(
+                                    id = ch.id,
+                                    comboGroupId = g.id,
+                                    menuItemId = ch.menuItemId,
+                                    quantity = ch.quantity.toDouble(),
+                                    isDefault = ch.isDefault,
+                                    sortOrder = ch.sortOrder
+                                )
+                            }
+                        )
+                    }
+                    comboDefinitions.add(
+                        SyncComboDefinitionDto(
+                            id = def.id,
+                            menuItemId = ci.id,
+                            name = def.name,
+                            groups = groupDtos
+                        )
+                    )
+                }
+            }
+        }
+
         return SyncDeltaResponse(
             branchId = branchId,
             sinceTimestamp = since,
@@ -838,6 +914,7 @@ class SyncService(
             promotions = promotions,
             users = users,
             printers = printers,
+            comboDefinitions = comboDefinitions,
             deviceCapabilities = capabilities,
             crmPolicy = CrmPolicyDto(),
             serverTime = Instant.now()

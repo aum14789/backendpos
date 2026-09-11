@@ -103,6 +103,7 @@ class ComboGroup(
     var name: String = "",
     var minSelection: Int = 1,
     var maxSelection: Int = 1,
+    var seqOrder: Int = 1,
     var sortOrder: Int = 0
 )
 
@@ -113,6 +114,8 @@ class ComboChoice(
     var priceOverride: BigDecimal? = null,
     var surcharge: BigDecimal = BigDecimal.ZERO,
     var isFree: Boolean = false,
+    var quantity: BigDecimal = BigDecimal.ONE,
+    var isDefault: Boolean = false,
     var sortOrder: Int = 0
 )
 
@@ -138,13 +141,16 @@ data class ComboChoiceCreateDto(
     val menuItemId: String = "",
     val priceOverride: BigDecimal? = null,
     val surcharge: BigDecimal = BigDecimal.ZERO,
-    val isFree: Boolean = false
+    val isFree: Boolean = false,
+    val quantity: BigDecimal = BigDecimal.ONE,
+    val isDefault: Boolean = false
 )
 
 data class ComboGroupCreateDto(
     val name: String = "",
     val minSelection: Int = 1,
     val maxSelection: Int = 1,
+    val seqOrder: Int = 1,
     val choices: List<ComboChoiceCreateDto> = emptyList()
 )
 
@@ -223,6 +229,7 @@ data class ComboGroupResponseDto(
     val name: String = "",
     val minSelection: Int = 1,
     val maxSelection: Int = 1,
+    val seqOrder: Int = 1,
     val choices: List<ComboChoiceResponseDto> = emptyList()
 )
 
@@ -232,7 +239,9 @@ data class ComboChoiceResponseDto(
     val itemName: String = "",
     val priceOverride: BigDecimal? = null,
     val surcharge: BigDecimal = BigDecimal.ZERO,
-    val isFree: Boolean = false
+    val isFree: Boolean = false,
+    val quantity: BigDecimal = BigDecimal.ONE,
+    val isDefault: Boolean = false
 )
 
 data class ItemBranchAllocationEntry(
