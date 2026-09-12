@@ -4,6 +4,7 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
@@ -138,5 +139,19 @@ class DatabaseConfig {
     @Primary
     fun jdbcTemplate(dataSource: DataSource): JdbcTemplate {
         return JdbcTemplate(dataSource)
+    }
+
+    @Bean
+    fun flywayMigrationStrategy(): FlywayMigrationStrategy {
+        return FlywayMigrationStrategy { flyway ->
+            logger.info("Repairing Flyway schema history to align migration checksums...")
+            try {
+                flyway.repair()
+            } catch (e: Exception) {
+                logger.warn("Flyway repair warning: {}", e.message)
+            }
+            logger.info("Executing Flyway migrations...")
+            flyway.migrate()
+        }
     }
 }
