@@ -130,11 +130,13 @@ CREATE TABLE IF NOT EXISTS buffet_package_recipes (
 
 -- Table: buffet_promotion_menu_items
 CREATE TABLE IF NOT EXISTS buffet_promotion_menu_items (
+    id VARCHAR(100) NOT NULL,
     promotion_id VARCHAR(36) NOT NULL,
     menu_item_id VARCHAR(36) NOT NULL,
     is_free BOOLEAN DEFAULT true NOT NULL,
     additional_price NUMERIC(15, 4) DEFAULT 0.0000 NOT NULL,
-    CONSTRAINT pk_buffet_promotion_menu_items PRIMARY KEY (promotion_id, menu_item_id)
+    CONSTRAINT pk_buffet_promotion_menu_items PRIMARY KEY (id),
+    CONSTRAINT uq_buffet_promotion_menu_items UNIQUE (promotion_id, menu_item_id)
 );
 
 -- Table: buffet_promotion_tiers
@@ -195,9 +197,11 @@ CREATE TABLE IF NOT EXISTS buffet_sessions (
 
 -- Table: buffet_tier_menu_items
 CREATE TABLE IF NOT EXISTS buffet_tier_menu_items (
+    id VARCHAR(100) NOT NULL,
     buffet_tier_id VARCHAR(36) NOT NULL,
     menu_item_id VARCHAR(36) NOT NULL,
-    CONSTRAINT pk_buffet_tier_menu_items PRIMARY KEY (buffet_tier_id, menu_item_id)
+    CONSTRAINT pk_buffet_tier_menu_items PRIMARY KEY (id),
+    CONSTRAINT uq_buffet_tier_menu_items UNIQUE (buffet_tier_id, menu_item_id)
 );
 
 -- Table: business_days
@@ -346,6 +350,9 @@ CREATE TABLE IF NOT EXISTS coupons (
     usage_limit_per_customer INTEGER DEFAULT 1,
     valid_from TIMESTAMP WITH TIME ZONE,
     valid_to TIMESTAMP WITH TIME ZONE,
+    active_days TEXT,
+    active_start_time VARCHAR(10),
+    active_end_time VARCHAR(10),
     status VARCHAR(20) DEFAULT 'ACTIVE'::character varying NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -537,6 +544,13 @@ CREATE TABLE IF NOT EXISTS inventory_items (
     unit VARCHAR(50) NOT NULL,
     base_unit VARCHAR(50) NOT NULL,
     conversion_factor NUMERIC(12, 4) DEFAULT 1.0000 NOT NULL,
+    receiving_unit VARCHAR(50) DEFAULT 'kg',
+    receiving_unit_factor NUMERIC(12, 4) DEFAULT 1000.0000,
+    dispense_unit VARCHAR(50) DEFAULT 'g',
+    dispense_unit_factor NUMERIC(12, 4) DEFAULT 1.0000,
+    count_frequency VARCHAR(50) DEFAULT 'DAILY',
+    count_frequencies TEXT,
+    brand_id VARCHAR(36),
     min_stock_alert NUMERIC(12, 4) DEFAULT 0.0000,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -614,9 +628,11 @@ CREATE TABLE IF NOT EXISTS menu_item_branches (
 
 -- Table: menu_item_modifier_groups
 CREATE TABLE IF NOT EXISTS menu_item_modifier_groups (
+    id VARCHAR(100) NOT NULL,
     menu_item_id VARCHAR(36) NOT NULL,
     modifier_group_id VARCHAR(36) NOT NULL,
-    CONSTRAINT pk_menu_item_modifier_groups PRIMARY KEY (menu_item_id, modifier_group_id)
+    CONSTRAINT pk_menu_item_modifier_groups PRIMARY KEY (id),
+    CONSTRAINT uq_menu_item_modifier_group UNIQUE (menu_item_id, modifier_group_id)
 );
 
 -- Table: menu_items
@@ -903,17 +919,21 @@ CREATE TABLE IF NOT EXISTS production_orders (
 
 -- Table: promotion_eligible_products
 CREATE TABLE IF NOT EXISTS promotion_eligible_products (
+    id VARCHAR(100) NOT NULL,
     promotion_id VARCHAR(36) NOT NULL,
     menu_item_id VARCHAR(36) NOT NULL,
-    CONSTRAINT pk_promotion_eligible_products PRIMARY KEY (promotion_id, menu_item_id)
+    CONSTRAINT pk_promotion_eligible_products PRIMARY KEY (id),
+    CONSTRAINT uq_promotion_eligible_products UNIQUE (promotion_id, menu_item_id)
 );
 
 -- Table: promotion_reward_products
 CREATE TABLE IF NOT EXISTS promotion_reward_products (
+    id VARCHAR(100) NOT NULL,
     promotion_id VARCHAR(36) NOT NULL,
     menu_item_id VARCHAR(36) NOT NULL,
     quantity NUMERIC(12, 4) DEFAULT 1.0000,
-    CONSTRAINT pk_promotion_reward_products PRIMARY KEY (promotion_id, menu_item_id)
+    CONSTRAINT pk_promotion_reward_products PRIMARY KEY (id),
+    CONSTRAINT uq_promotion_reward_products UNIQUE (promotion_id, menu_item_id)
 );
 
 -- Table: promotions
@@ -927,6 +947,9 @@ CREATE TABLE IF NOT EXISTS promotions (
     is_active BOOLEAN DEFAULT true,
     start_at TIMESTAMP WITH TIME ZONE NOT NULL,
     end_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    active_days TEXT,
+    active_start_time VARCHAR(10),
+    active_end_time VARCHAR(10),
     branch_id VARCHAR(36),
     channel VARCHAR(50),
     min_quantity NUMERIC(12, 4) DEFAULT 0.0000,
@@ -1100,6 +1123,8 @@ CREATE TABLE IF NOT EXISTS recipes (
     yield_quantity NUMERIC(12, 4) DEFAULT 1.0000 NOT NULL,
     yield_unit VARCHAR(50) DEFAULT 'portion'::character varying NOT NULL,
     is_active BOOLEAN DEFAULT true,
+    start_date TIMESTAMP WITH TIME ZONE,
+    end_date TIMESTAMP WITH TIME ZONE,
     notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_recipes PRIMARY KEY (id)
@@ -1317,10 +1342,12 @@ CREATE TABLE IF NOT EXISTS tables (
 
 -- Table: tax_invoice_counters
 CREATE TABLE IF NOT EXISTS tax_invoice_counters (
+    id VARCHAR(100) NOT NULL,
     branch_id VARCHAR(36) NOT NULL,
     year_val INTEGER NOT NULL,
     current_val BIGINT DEFAULT 0 NOT NULL,
-    CONSTRAINT pk_tax_invoice_counters PRIMARY KEY (branch_id, year_val)
+    CONSTRAINT pk_tax_invoice_counters PRIMARY KEY (id),
+    CONSTRAINT uq_tax_invoice_counters UNIQUE (branch_id, year_val)
 );
 
 -- Table: tax_invoice_item_snapshots
@@ -1342,9 +1369,11 @@ CREATE TABLE IF NOT EXISTS tax_invoice_item_snapshots (
 
 -- Table: tax_invoice_receipts
 CREATE TABLE IF NOT EXISTS tax_invoice_receipts (
+    id VARCHAR(100) NOT NULL,
     tax_invoice_id VARCHAR(36) NOT NULL,
     order_id VARCHAR(36) NOT NULL,
-    CONSTRAINT pk_tax_invoice_receipts PRIMARY KEY (tax_invoice_id, order_id)
+    CONSTRAINT pk_tax_invoice_receipts PRIMARY KEY (id),
+    CONSTRAINT uq_tax_invoice_receipts UNIQUE (tax_invoice_id, order_id)
 );
 
 -- Table: tax_invoices
@@ -1389,6 +1418,7 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255),
     phone VARCHAR(50),
     pin_code VARCHAR(255),
+    assigned_modules TEXT,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_by VARCHAR(36),
@@ -1421,6 +1451,46 @@ CREATE TABLE IF NOT EXISTS zones (
     zone_type VARCHAR(50) DEFAULT 'DINE_IN'::character varying,
     is_active BOOLEAN DEFAULT true,
     CONSTRAINT pk_zones PRIMARY KEY (id)
+);
+
+
+-- Table: units_of_measure (Inventory & Recipes)
+CREATE TABLE IF NOT EXISTS units_of_measure (
+    id VARCHAR(36) NOT NULL,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    category VARCHAR(50) DEFAULT 'COUNT',
+    is_base_unit BOOLEAN DEFAULT false,
+    base_unit_code VARCHAR(50),
+    conversion_factor NUMERIC(15, 4) DEFAULT 1.0000,
+    description TEXT,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_units_of_measure PRIMARY KEY (id),
+    CONSTRAINT uq_units_of_measure_code UNIQUE (code)
+);
+
+-- Table: navigation_settings (Backoffice ERP Dynamic Navigation)
+CREATE TABLE IF NOT EXISTS navigation_settings (
+    id VARCHAR(36) NOT NULL,
+    company_id VARCHAR(36),
+    disabled_group_ids TEXT,
+    disabled_item_paths TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(36),
+    CONSTRAINT pk_navigation_settings PRIMARY KEY (id)
+);
+
+-- Table: recipe_ingredient_substitutes (Kitchen Production BOM Substitutes)
+CREATE TABLE IF NOT EXISTS recipe_ingredient_substitutes (
+    id VARCHAR(36) NOT NULL,
+    recipe_ingredient_id VARCHAR(36) NOT NULL,
+    priority INTEGER DEFAULT 1,
+    inventory_item_id VARCHAR(36) NOT NULL,
+    quantity NUMERIC(15, 4) DEFAULT 0.0000,
+    unit VARCHAR(50) NOT NULL,
+    waste_percentage NUMERIC(5, 2) DEFAULT 0.00,
+    CONSTRAINT pk_recipe_ingredient_substitutes PRIMARY KEY (id)
 );
 
 -- Foreign Key Constraints
@@ -2347,11 +2417,11 @@ ON CONFLICT (id) DO NOTHING;
 -- 8. Default Users (admin, manager01, cashier01)
 -- BCrypt password: password ($2a$10$i50/pAXDdCj2u43dB7CHgezdtc4f0/DWMmVdVvlMHR/AhQwXgQFaa)
 -- PIN: 1234 ($2a$10$3n3nWX3a7salqcVriL.2.eVjGCbysLBhi0ReTThl26wy8IY8X5JCO)
-INSERT INTO users (id, company_id, username, password_hash, pin_code, full_name, email, phone, is_active)
+INSERT INTO users (id, company_id, username, password_hash, pin_code, assigned_modules, full_name, email, phone, is_active)
 VALUES 
-  ('usr-001', 'comp-001', 'admin', '$2a$10$i50/pAXDdCj2u43dB7CHgezdtc4f0/DWMmVdVvlMHR/AhQwXgQFaa', '$2a$10$3n3nWX3a7salqcVriL.2.eVjGCbysLBhi0ReTThl26wy8IY8X5JCO', 'System Administrator', 'admin@sunpos.com', '081-999-8888', true),
-  ('usr-002', 'comp-001', 'manager01', '$2a$10$i50/pAXDdCj2u43dB7CHgezdtc4f0/DWMmVdVvlMHR/AhQwXgQFaa', '$2a$10$3n3nWX3a7salqcVriL.2.eVjGCbysLBhi0ReTThl26wy8IY8X5JCO', 'Branch Manager 01', 'manager@sunpos.com', '081-999-7777', true),
-  ('usr-003', 'comp-001', 'cashier01', '$2a$10$i50/pAXDdCj2u43dB7CHgezdtc4f0/DWMmVdVvlMHR/AhQwXgQFaa', '$2a$10$3n3nWX3a7salqcVriL.2.eVjGCbysLBhi0ReTThl26wy8IY8X5JCO', 'Cashier 01', 'cashier@sunpos.com', '081-999-6666', true)
+  ('usr-001', 'comp-001', 'admin', '$2a$10$i50/pAXDdCj2u43dB7CHgezdtc4f0/DWMmVdVvlMHR/AhQwXgQFaa', '$2a$10$3n3nWX3a7salqcVriL.2.eVjGCbysLBhi0ReTThl26wy8IY8X5JCO', 'REPORTS,STORE_OPERATIONS,MENU_PROMOTIONS,INVENTORY_PURCHASING,KITCHEN_PRODUCTION,CRM_LOYALTY,ORG_SETTINGS', 'System Administrator', 'admin@sunpos.com', '081-999-8888', true),
+  ('usr-002', 'comp-001', 'manager01', '$2a$10$i50/pAXDdCj2u43dB7CHgezdtc4f0/DWMmVdVvlMHR/AhQwXgQFaa', '$2a$10$H6N2ozIESJ4zMS23CpQuoO9Dfh6UH68ehZiak7fCaVomeX9jCqTru', 'REPORTS,STORE_OPERATIONS,MENU_PROMOTIONS,INVENTORY_PURCHASING,KITCHEN_PRODUCTION,CRM_LOYALTY,ORG_SETTINGS', 'Branch Manager 01', 'manager@sunpos.com', '081-999-7777', true),
+  ('usr-003', 'comp-001', 'cashier01', '$2a$10$i50/pAXDdCj2u43dB7CHgezdtc4f0/DWMmVdVvlMHR/AhQwXgQFaa', '$2a$10$3n3nWX3a7salqcVriL.2.eVjGCbysLBhi0ReTThl26wy8IY8X5JCO', 'STORE_OPERATIONS', 'Cashier 01', 'cashier@sunpos.com', '081-999-6666', true)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO user_roles (id, user_id, role_id)
@@ -2366,3 +2436,64 @@ INSERT INTO devices (id, branch_id, device_name, device_code, device_type, app_v
 VALUES 
   ('dev-001', 'branch-001', 'Main Cashier POS 01', 'POS-MAIN-01', 'POS_MAIN', '1.0.0', 'ACTIVE', true)
 ON CONFLICT (id) DO NOTHING;
+
+
+-- 10. Table Types (Baseline Master Data)
+INSERT INTO table_types (id, branch_id, name, code, is_default, created_at)
+VALUES 
+  ('type-std', 'branch-001', 'โต๊ะมาตรฐาน (Standard Table)', 'STD', true, CURRENT_TIMESTAMP),
+  ('type-vip', 'branch-001', 'โต๊ะ VIP (VIP Room)', 'VIP', false, CURRENT_TIMESTAMP),
+  ('type-bar', 'branch-001', 'เคาน์เตอร์บาร์ (Bar Counter)', 'BAR', false, CURRENT_TIMESTAMP)
+ON CONFLICT (id) DO NOTHING;
+
+-- 11. Restaurant Zones
+INSERT INTO zones (id, branch_id, name, zone_type, sort_order, is_active, created_at)
+VALUES 
+  ('zone-01', 'branch-001', 'บุฟเฟ่ต์ (Buffet Zone)', 'BUFFET', 1, true, CURRENT_TIMESTAMP),
+  ('zone-02', 'branch-001', 'หน้าร้าน / A La Carte', 'DINE_IN', 2, true, CURRENT_TIMESTAMP)
+ON CONFLICT (id) DO NOTHING;
+
+-- 12. Restaurant Tables
+INSERT INTO tables (id, branch_id, zone_id, table_type_id, name_number, capacity, status, is_active, created_at, updated_at)
+VALUES 
+  ('tbl-a01', 'branch-001', 'zone-01', 'type-std', 'A01', 4, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('tbl-a02', 'branch-001', 'zone-01', 'type-std', 'A02', 4, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('tbl-a03', 'branch-001', 'zone-01', 'type-std', 'A03', 4, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('tbl-a04', 'branch-001', 'zone-01', 'type-std', 'A04', 4, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('tbl-b01', 'branch-001', 'zone-02', 'type-std', 'B01', 2, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('tbl-b02', 'branch-001', 'zone-02', 'type-std', 'B02', 2, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('tbl-b03', 'branch-001', 'zone-02', 'type-std', 'B03', 4, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('tbl-b04', 'branch-001', 'zone-02', 'type-std', 'B04', 6, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT (id) DO NOTHING;
+
+-- 13. Units of Measure (Inventory & Recipes)
+INSERT INTO units_of_measure (id, code, name, category, is_base_unit, conversion_factor, is_active, created_at)
+VALUES 
+  ('uom-kg', 'KG', 'กิโลกรัม (Kilogram)', 'WEIGHT', true, 1.0000, true, CURRENT_TIMESTAMP),
+  ('uom-g', 'G', 'กรัม (Gram)', 'WEIGHT', false, 0.0010, true, CURRENT_TIMESTAMP),
+  ('uom-l', 'L', 'ลิตร (Liter)', 'VOLUME', true, 1.0000, true, CURRENT_TIMESTAMP),
+  ('uom-ml', 'ML', 'มิลลิลิตร (Milliliter)', 'VOLUME', false, 0.0010, true, CURRENT_TIMESTAMP),
+  ('uom-pcs', 'PCS', 'ชิ้น / จาน (Piece)', 'COUNT', true, 1.0000, true, CURRENT_TIMESTAMP),
+  ('uom-box', 'BOX', 'กล่อง (Box)', 'COUNT', false, 12.0000, true, CURRENT_TIMESTAMP),
+  ('uom-pack', 'PACK', 'แพ็ค (Pack)', 'COUNT', false, 10.0000, true, CURRENT_TIMESTAMP)
+ON CONFLICT (id) DO NOTHING;
+
+-- 14. Navigation Settings (Default ERP Navigation Config)
+INSERT INTO navigation_settings (id, company_id, disabled_group_ids, disabled_item_paths, updated_at)
+VALUES ('default_nav_setting', 'comp-001', '', '', CURRENT_TIMESTAMP)
+ON CONFLICT (id) DO NOTHING;
+
+-- 15. Activation Codes (Multi-Branch POS Activation Engine - ADR 0012)
+INSERT INTO activation_codes (
+    id, code, branch_id, branch_name, branch_code, device_code, device_name,
+    company_id, company_name, status, created_at, expires_at
+) VALUES 
+(
+    'act-branch-001-01', 'SUN-HQ01-POS01', 'branch-001', 'สาขาใหญ่ สยามสแควร์ (Siam Flagship)', 'HQ-01', 'POS-01', 'Main POS Terminal (Siam Flagship)',
+    'comp-001', 'SunPOS Restaurant Group Co., Ltd.', 'UNUSED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '10 years'
+),
+(
+    'act-branch-002-01', 'SUN-LP02-POS01', 'branch-002', 'สาขา เซ็นทรัลลาดพร้าว (Ladprao)', 'LP-02', 'POS-01', 'Main POS Terminal (Ladprao)',
+    'comp-001', 'SunPOS Restaurant Group Co., Ltd.', 'UNUSED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '10 years'
+)
+ON CONFLICT (code) DO NOTHING;
