@@ -24,6 +24,12 @@ spring:
     validate-on-migrate: false
     locations: classpath:db/migration
 
+  jackson:
+    time-zone: Asia/Bangkok
+    date-format: "yyyy-MM-dd HH:mm:ss"
+    serialization:
+      write-dates-as-timestamps: false
+
 sunpos:
   seeder:
     enabled: ${SEEDER_ENABLED:false}
