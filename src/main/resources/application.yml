@@ -31,8 +31,6 @@ spring:
       write-dates-as-timestamps: false
 
 sunpos:
-  seeder:
-    enabled: ${SEEDER_ENABLED:false}
   jwt:
     # Uses JWT_SECRET env var if present, with a secure development fallback
     secret: ${JWT_SECRET:sunpos_super_secret_jwt_key_2026_min_64_characters_long_for_hs512_security}

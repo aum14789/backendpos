@@ -929,8 +929,7 @@ class SyncService(
 @RestController
 @RequestMapping("/api/v1/sync")
 class SyncController(
-    private val syncService: SyncService,
-    private val seeder: com.sunpos.backend.config.DataSeeder? = null
+    private val syncService: SyncService
 ) {
     @PostMapping("/push")
     fun pushEvents(@RequestBody request: SyncPushRequest): ApiResponse<SyncPushResult> {
@@ -977,11 +976,5 @@ class SyncController(
             ),
             "Cloud Sync service is operational"
         )
-    }
-
-    @PostMapping("/seed")
-    fun seedDatabase(@RequestParam(required = false, defaultValue = "false") force: Boolean): ApiResponse<String> {
-        seeder?.seedMasterDataIfEmpty(force = force)
-        return ApiResponse.success("Seeding completed", "Database seed requested")
     }
 }

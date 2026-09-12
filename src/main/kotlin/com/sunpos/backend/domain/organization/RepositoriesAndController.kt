@@ -48,15 +48,8 @@ class OrganizationController(
     private val brandRepository: BrandRepository,
     private val branchRepository: BranchRepository,
     private val deviceRepository: DeviceRepository,
-    private val activationCodeRepository: ActivationCodeRepository,
-    private val dataSeeder: com.sunpos.backend.config.DataSeeder? = null
+    private val activationCodeRepository: ActivationCodeRepository
 ) {
-
-    @PostMapping("/seed-mock-data")
-    fun triggerSeedData(@RequestParam(defaultValue = "false") force: Boolean): ApiResponse<String> {
-        dataSeeder?.seedMasterDataIfEmpty(force)
-        return ApiResponse.success("Seed completed", "Database mockup seed requested")
-    }
 
     @GetMapping("/companies")
     @PreAuthorize("hasAuthority('ORGANIZATION_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN')")
