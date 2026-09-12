@@ -285,7 +285,6 @@ abstract class JdbcRepository<T : Any>(
 
     open fun save(entity: T): T {
         val id = getId(entity)
-        localCache[id] = entity
 
         val fields = allFields()
         val columns = mutableListOf<String>()
@@ -355,7 +354,9 @@ abstract class JdbcRepository<T : Any>(
 
         try {
             jdbcTemplate.update(sql, *values.toTypedArray())
+            localCache[id] = entity
         } catch (e: Exception) {
+            localCache.remove(id)
             logger.error("JDBC save failed for {}/{}: {}", tableName, id, e.message, e)
             throw e
         }

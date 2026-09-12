@@ -106,10 +106,14 @@ class TableService(
     }
 
     fun createTable(dto: TableCreateDto): RestaurantTable {
+        val validTableTypeId = if (!dto.tableTypeId.isNullOrBlank()) {
+            if (tableTypeRepository.findById(dto.tableTypeId).isPresent) dto.tableTypeId else null
+        } else null
+
         val table = RestaurantTable(
             branchId = dto.branchId,
             zoneId = dto.zoneId,
-            tableTypeId = dto.tableTypeId,
+            tableTypeId = validTableTypeId,
             nameNumber = dto.nameNumber,
             capacity = dto.capacity,
             isActive = dto.isActive
@@ -121,7 +125,10 @@ class TableService(
     fun updateTable(tableId: String, dto: TableUpdateDto): RestaurantTable {
         val table = tableRepository.findById(tableId).orElseThrow { IllegalArgumentException("Table not found") }
         table.zoneId = dto.zoneId
-        table.tableTypeId = dto.tableTypeId
+        val validTableTypeId = if (!dto.tableTypeId.isNullOrBlank()) {
+            if (tableTypeRepository.findById(dto.tableTypeId).isPresent) dto.tableTypeId else null
+        } else null
+        table.tableTypeId = validTableTypeId
         table.nameNumber = dto.nameNumber
         table.capacity = dto.capacity
         table.isActive = dto.isActive
