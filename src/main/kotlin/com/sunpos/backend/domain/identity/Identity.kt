@@ -1,5 +1,6 @@
 package com.sunpos.backend.domain.identity
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import java.io.Serializable
 import java.time.Instant
 import java.util.UUID
@@ -72,6 +73,7 @@ class UserRole(
 }
 
 // DTOs
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class UserCreateDto(
     val companyId: String = "",
     val username: String = "",
@@ -81,9 +83,11 @@ data class UserCreateDto(
     val phone: String? = null,
     val pinCode: String? = null,
     val assignedModules: List<String> = emptyList(),
-    val roleIds: List<String> = emptyList()
+    val roleIds: List<String> = emptyList(),
+    val assignedBranchId: String? = null
 )
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class UserResponseDto(
     val id: String = "",
     val companyId: String = "",
@@ -95,9 +99,11 @@ data class UserResponseDto(
     val assignedModules: List<String> = emptyList(),
     val isActive: Boolean = true,
     val roles: List<String> = emptyList(),
-    val permissions: List<String> = emptyList()
+    val permissions: List<String> = emptyList(),
+    val assignedBranchId: String? = null
 )
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class PinLoginRequest(
     val pinCode: String = "",
     val deviceId: String? = null,
@@ -105,11 +111,13 @@ data class PinLoginRequest(
     val username: String? = null
 )
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class PinChangeRequest(
     val currentPin: String = "",
     val newPin: String = ""
 )
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class UserUpdateDto(
     val fullName: String? = null,
     val email: String? = null,
@@ -118,7 +126,8 @@ data class UserUpdateDto(
     val password: String? = null,
     val assignedModules: List<String>? = null,
     val roleIds: List<String>? = null,
-    val isActive: Boolean? = null
+    val isActive: Boolean? = null,
+    val assignedBranchId: String? = null
 )
 
 data class RoleCreateDto(
