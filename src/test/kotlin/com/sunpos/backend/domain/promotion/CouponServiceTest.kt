@@ -51,7 +51,9 @@ class CouponServiceTest {
                 type = CouponType.FIXED,
                 value = BigDecimal("50.0000"),
                 minSpend = BigDecimal("200.0000"),
-                status = CouponStatus.ACTIVE
+                status = CouponStatus.ACTIVE,
+                activeStartTime = "00:00",
+                activeEndTime = "23:59"
             )
         )
 
@@ -80,7 +82,9 @@ class CouponServiceTest {
                 value = BigDecimal("10.0000"),
                 minSpend = BigDecimal("300.0000"),
                 maxDiscount = BigDecimal("100.0000"),
-                status = CouponStatus.ACTIVE
+                status = CouponStatus.ACTIVE,
+                activeStartTime = "00:00",
+                activeEndTime = "23:59"
             )
         )
 
@@ -117,7 +121,9 @@ class CouponServiceTest {
                 value = BigDecimal("20.0000"),
                 validFrom = Instant.now().minus(30, ChronoUnit.DAYS),
                 validTo = Instant.now().minus(1, ChronoUnit.DAYS),
-                status = CouponStatus.ACTIVE
+                status = CouponStatus.ACTIVE,
+                activeStartTime = "00:00",
+                activeEndTime = "23:59"
             )
         )
 
@@ -143,7 +149,9 @@ class CouponServiceTest {
                 value = BigDecimal("50.0000"),
                 validFrom = Instant.now().plus(7, ChronoUnit.DAYS),
                 validTo = Instant.now().plus(30, ChronoUnit.DAYS),
-                status = CouponStatus.ACTIVE
+                status = CouponStatus.ACTIVE,
+                activeStartTime = "00:00",
+                activeEndTime = "23:59"
             )
         )
 
@@ -167,7 +175,9 @@ class CouponServiceTest {
                 type = CouponType.FIXED,
                 value = BigDecimal("50.0000"),
                 minSpend = BigDecimal("500.0000"),
-                status = CouponStatus.ACTIVE
+                status = CouponStatus.ACTIVE,
+                activeStartTime = "00:00",
+                activeEndTime = "23:59"
             )
         )
 
@@ -192,7 +202,9 @@ class CouponServiceTest {
                 value = BigDecimal("30.0000"),
                 usageLimitTotal = 2,
                 usageLimitPerCustomer = 5,
-                status = CouponStatus.ACTIVE
+                status = CouponStatus.ACTIVE,
+                activeStartTime = "00:00",
+                activeEndTime = "23:59"
             )
         )
 
@@ -239,7 +251,9 @@ class CouponServiceTest {
                 value = BigDecimal("40.0000"),
                 usageLimitTotal = 100,
                 usageLimitPerCustomer = 1,
-                status = CouponStatus.ACTIVE
+                status = CouponStatus.ACTIVE,
+                activeStartTime = "00:00",
+                activeEndTime = "23:59"
             )
         )
 
@@ -284,7 +298,9 @@ class CouponServiceTest {
                 type = CouponType.FIXED,
                 value = BigDecimal("50.0000"),
                 branchId = "branch-specific-01",
-                status = CouponStatus.ACTIVE
+                status = CouponStatus.ACTIVE,
+                activeStartTime = "00:00",
+                activeEndTime = "23:59"
             )
         )
 
@@ -316,7 +332,9 @@ class CouponServiceTest {
                 code = "IDEMPOTENT50",
                 type = CouponType.FIXED,
                 value = BigDecimal("50.0000"),
-                status = CouponStatus.ACTIVE
+                status = CouponStatus.ACTIVE,
+                activeStartTime = "00:00",
+                activeEndTime = "23:59"
             )
         )
 
@@ -368,7 +386,9 @@ class CouponServiceTest {
             companyId = companyId,
             dto = CreateCouponRequestDto(
                 code = "UNIQUE100",
-                value = BigDecimal("100.0000")
+                value = BigDecimal("100.0000"),
+                activeStartTime = "00:00",
+                activeEndTime = "23:59"
             )
         )
 
@@ -377,7 +397,24 @@ class CouponServiceTest {
                 companyId = companyId,
                 dto = CreateCouponRequestDto(
                     code = "unique100",
-                    value = BigDecimal("50.0000")
+                    value = BigDecimal("50.0000"),
+                    activeStartTime = "00:00",
+                    activeEndTime = "23:59"
+                )
+            )
+        }
+    }
+
+    @Test
+    fun `test creating coupon without activeStartTime or activeEndTime throws exception`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            couponService.createCoupon(
+                companyId = companyId,
+                dto = CreateCouponRequestDto(
+                    code = "NOTIME",
+                    value = BigDecimal("50.0000"),
+                    activeStartTime = null,
+                    activeEndTime = null
                 )
             )
         }

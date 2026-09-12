@@ -308,6 +308,9 @@ data class CouponValidationResponseDto(
     val value: BigDecimal? = null,
     val calculatedDiscountAmount: BigDecimal = BigDecimal.ZERO,
     val minSpend: BigDecimal? = null,
+    val activeDays: String? = null,
+    val activeStartTime: String? = null,
+    val activeEndTime: String? = null,
     val message: String = ""
 )
 

@@ -122,6 +122,16 @@ class CouponService(
             throw IllegalArgumentException("ส่วนลดเปอร์เซ็นต์ต้องไม่เกิน 100%")
         }
 
+        val startTime = dto.activeStartTime?.trim()
+        val endTime = dto.activeEndTime?.trim()
+        if (startTime.isNullOrBlank() || endTime.isNullOrBlank()) {
+            throw IllegalArgumentException("ต้องระบุเวลาเริ่มใช้งานและเวลาสิ้นสุดเสมอ")
+        }
+        val timeRegex = Regex("^([01]\\d|2[0-3]):[0-5]\\d$")
+        if (!timeRegex.matches(startTime) || !timeRegex.matches(endTime)) {
+            throw IllegalArgumentException("รูปแบบเวลาไม่ถูกต้อง ต้องเป็น HH:mm เช่น 11:00")
+        }
+
         val coupon = Coupon(
             id = UUID.randomUUID().toString(),
             companyId = companyId,
@@ -139,8 +149,8 @@ class CouponService(
             validFrom = dto.validFrom,
             validTo = dto.validTo,
             activeDays = ActiveSchedule.formatDays(dto.activeDays).ifBlank { null },
-            activeStartTime = dto.activeStartTime?.trim()?.ifBlank { null },
-            activeEndTime = dto.activeEndTime?.trim()?.ifBlank { null },
+            activeStartTime = startTime,
+            activeEndTime = endTime,
             status = dto.status,
             maxUses = dto.usageLimitTotal ?: 1000,
             currentUses = 0,
@@ -168,10 +178,20 @@ class CouponService(
         }
         dto.usageLimitPerCustomer?.let { coupon.usageLimitPerCustomer = it }
         dto.validFrom?.let { coupon.validFrom = it }
-        dto.validTo?.let { coupon.validTo = it }
         dto.activeDays?.let { coupon.activeDays = ActiveSchedule.formatDays(it).ifBlank { null } }
-        dto.activeStartTime?.let { coupon.activeStartTime = it.trim().ifBlank { null } }
-        dto.activeEndTime?.let { coupon.activeEndTime = it.trim().ifBlank { null } }
+        if (dto.activeStartTime != null || dto.activeEndTime != null) {
+            val start = (dto.activeStartTime ?: coupon.activeStartTime)?.trim()
+            val end = (dto.activeEndTime ?: coupon.activeEndTime)?.trim()
+            if (start.isNullOrBlank() || end.isNullOrBlank()) {
+                throw IllegalArgumentException("ต้องระบุเวลาเริ่มใช้งานและเวลาสิ้นสุดเสมอ")
+            }
+            val timeRegex = Regex("^([01]\\d|2[0-3]):[0-5]\\d$")
+            if (!timeRegex.matches(start) || !timeRegex.matches(end)) {
+                throw IllegalArgumentException("รูปแบบเวลาไม่ถูกต้อง ต้องเป็น HH:mm เช่น 11:00")
+            }
+            coupon.activeStartTime = start
+            coupon.activeEndTime = end
+        }
         dto.brandId?.let { coupon.brandId = it }
         dto.branchId?.let { coupon.branchId = it }
         dto.status?.let { coupon.status = it }
@@ -380,6 +400,9 @@ class CouponService(
             value = effectiveValue,
             calculatedDiscountAmount = calculatedDiscount,
             minSpend = effectiveMinSpend,
+            activeDays = coupon.activeDays,
+            activeStartTime = coupon.activeStartTime,
+            activeEndTime = coupon.activeEndTime,
             message = "ใช้งานคูปอง '$displayName' สำเร็จ ลดทันที ฿${calculatedDiscount.setScale(2, ROUNDING)}"
         )
     }
@@ -673,6 +696,16 @@ class PromotionService(
             throw IllegalArgumentException("ส่วนลดเปอร์เซ็นต์ต้องไม่เกิน 100%")
         }
 
+        val startTime = dto.activeStartTime?.trim()
+        val endTime = dto.activeEndTime?.trim()
+        if (startTime.isNullOrBlank() || endTime.isNullOrBlank()) {
+            throw IllegalArgumentException("ต้องระบุเวลาเริ่มใช้งานและเวลาสิ้นสุดเสมอ")
+        }
+        val timeRegex = Regex("^([01]\\d|2[0-3]):[0-5]\\d$")
+        if (!timeRegex.matches(startTime) || !timeRegex.matches(endTime)) {
+            throw IllegalArgumentException("รูปแบบเวลาไม่ถูกต้อง ต้องเป็น HH:mm เช่น 11:00")
+        }
+
         val promo = Promotion(
             id = UUID.randomUUID().toString(),
             code = cleanCode,
@@ -694,8 +727,8 @@ class PromotionService(
             usageLimit = dto.usageLimit,
             perCustomerLimit = dto.perCustomerLimit,
             activeDays = ActiveSchedule.formatDays(dto.activeDays).ifBlank { null },
-            activeStartTime = dto.activeStartTime?.trim()?.ifBlank { null },
-            activeEndTime = dto.activeEndTime?.trim()?.ifBlank { null }
+            activeStartTime = startTime,
+            activeEndTime = endTime
         )
         val saved = promotionRepository.save(promo)
 
@@ -742,8 +775,19 @@ class PromotionService(
         dto.usageLimit?.let { promo.usageLimit = it }
         dto.perCustomerLimit?.let { promo.perCustomerLimit = it }
         dto.activeDays?.let { promo.activeDays = ActiveSchedule.formatDays(it).ifBlank { null } }
-        dto.activeStartTime?.let { promo.activeStartTime = it.trim().ifBlank { null } }
-        dto.activeEndTime?.let { promo.activeEndTime = it.trim().ifBlank { null } }
+        if (dto.activeStartTime != null || dto.activeEndTime != null) {
+            val start = (dto.activeStartTime ?: promo.activeStartTime)?.trim()
+            val end = (dto.activeEndTime ?: promo.activeEndTime)?.trim()
+            if (start.isNullOrBlank() || end.isNullOrBlank()) {
+                throw IllegalArgumentException("ต้องระบุเวลาเริ่มใช้งานและเวลาสิ้นสุดเสมอ")
+            }
+            val timeRegex = Regex("^([01]\\d|2[0-3]):[0-5]\\d$")
+            if (!timeRegex.matches(start) || !timeRegex.matches(end)) {
+                throw IllegalArgumentException("รูปแบบเวลาไม่ถูกต้อง ต้องเป็น HH:mm เช่น 11:00")
+            }
+            promo.activeStartTime = start
+            promo.activeEndTime = end
+        }
         dto.isActive?.let { promo.isActive = it }
 
         val saved = promotionRepository.save(promo)

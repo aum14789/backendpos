@@ -163,7 +163,9 @@ class SyncServiceTest {
                     type = com.sunpos.backend.domain.promotion.CouponType.FIXED,
                     value = BigDecimal("50.00"),
                     minSpend = BigDecimal("100.00"),
-                    name = "Sync Test Coupon"
+                    name = "Sync Test Coupon",
+                    activeStartTime = "00:00",
+                    activeEndTime = "23:59"
                 )
             )
         } catch (_: Exception) {}
