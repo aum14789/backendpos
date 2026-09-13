@@ -828,7 +828,6 @@ class CatalogController(
         )
     }
     @GetMapping("/categories")
-    @JvmOverloads
     fun getCategories(
         @RequestParam(required = false) branchId: String? = null,
         @RequestParam(required = false) brandId: String? = null
