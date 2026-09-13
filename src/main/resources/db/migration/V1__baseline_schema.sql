@@ -603,7 +603,7 @@ CREATE TABLE IF NOT EXISTS membership_tiers (
 -- Table: menu_categories
 CREATE TABLE IF NOT EXISTS menu_categories (
     id VARCHAR(36) NOT NULL,
-    branch_id VARCHAR(36) NOT NULL,
+    branch_id VARCHAR(36),
     name VARCHAR(100) NOT NULL,
     description TEXT,
     sort_order INTEGER DEFAULT 0,
@@ -611,6 +611,21 @@ CREATE TABLE IF NOT EXISTS menu_categories (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     brand_id VARCHAR(36),
     CONSTRAINT pk_menu_categories PRIMARY KEY (id)
+);
+
+-- Table: kitchen_stations
+CREATE TABLE IF NOT EXISTS kitchen_stations (
+    id VARCHAR(36) NOT NULL,
+    brand_id VARCHAR(36),
+    branch_id VARCHAR(36),
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    sort_order INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT true NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_kitchen_stations PRIMARY KEY (id),
+    CONSTRAINT uq_kitchen_stations_code UNIQUE (code)
 );
 
 -- Table: menu_item_branches

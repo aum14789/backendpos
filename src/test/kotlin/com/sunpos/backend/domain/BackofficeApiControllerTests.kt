@@ -167,6 +167,66 @@ class BackofficeApiControllerTests {
     }
 
     @Test
+    fun `test delete category successfully with cascade detach`() {
+        val cat = MenuCategory(id = "cat-to-delete", name = "Test Category")
+        `when`(menuCategoryRepository.findById("cat-to-delete")).thenReturn(Optional.of(cat))
+        `when`(menuItemRepository.findByCategoryId("cat-to-delete")).thenReturn(emptyList())
+
+        val res = catalogController.deleteCategory("cat-to-delete")
+        assertTrue(res.success)
+        verify(menuCategoryRepository).deleteById("cat-to-delete")
+    }
+
+    @Test
+    fun `test delete category fails when menu items linked`() {
+        val cat = MenuCategory(id = "cat-linked", name = "Linked Category")
+        val item = MenuItem(id = "item-99", categoryId = "cat-linked", name = "Linked Item")
+        `when`(menuCategoryRepository.findById("cat-linked")).thenReturn(Optional.of(cat))
+        `when`(menuItemRepository.findByCategoryId("cat-linked")).thenReturn(listOf(item))
+
+        val ex = assertThrows(IllegalStateException::class.java) {
+            catalogController.deleteCategory("cat-linked")
+        }
+        assertTrue(ex.message?.contains("มีรายการอาหารผูกอยู่") == true)
+        verify(menuCategoryRepository, never()).deleteById("cat-linked")
+    }
+
+    @Test
+    fun `test batch upsert menu items`() {
+        val cat = MenuCategory(id = "cat-main", name = "Main Dishes")
+        `when`(menuCategoryRepository.findAll()).thenReturn(listOf(cat))
+        `when`(menuCategoryRepository.findById("cat-main")).thenReturn(Optional.of(cat))
+        val existingItem = MenuItem(id = "item-1", categoryId = "cat-main", name = "Old Name", basePrice = BigDecimal("50.00"))
+        val itemsMap = mutableMapOf("item-1" to existingItem)
+        `when`(menuItemRepository.existsById("item-1")).thenReturn(true)
+        `when`(menuItemRepository.findById(org.mockito.ArgumentMatchers.anyString())).thenAnswer { inv ->
+            val id = inv.arguments[0] as String
+            Optional.ofNullable(itemsMap[id])
+        }
+        `when`(menuItemRepository.save(anyObject())).thenAnswer { inv ->
+            val item = inv.arguments[0] as MenuItem
+            itemsMap[item.id] = item
+            item
+        }
+
+        val req = BatchUpsertMenuItemsRequest(
+
+            items = listOf(
+                MenuItemCreateDto(id = "item-1", name = "Updated Name", categoryId = "cat-main", basePrice = BigDecimal("65.00")),
+                MenuItemCreateDto(id = "item-2", name = "Brand New Item", categoryId = "cat-main", basePrice = BigDecimal("120.00"))
+            ),
+            targetBranchId = "b1"
+        )
+
+        val res = catalogController.batchUpsertMenuItems(req)
+        assertTrue(res.success)
+        assertEquals(1, res.data?.insertedCount)
+        assertEquals(1, res.data?.updatedCount)
+        assertEquals(2, res.data?.totalProcessed)
+    }
+
+
+    @Test
     fun `test table controller zones and tables`() {
         val zones = listOf(
             Zone(id = "z1", branchId = "b1", name = "Main Dining", zoneType = "DINE_IN", sortOrder = 1)

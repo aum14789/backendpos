@@ -71,6 +71,7 @@ class SchemaIntegrityTest {
             com.sunpos.backend.domain.promotion.Coupon::class.java to "coupons",
             com.sunpos.backend.domain.recipe.Recipe::class.java to "recipes",
             com.sunpos.backend.domain.recipe.RecipeIngredientSubstitute::class.java to "recipe_ingredient_substitutes",
+            com.sunpos.backend.domain.kitchen.KitchenStation::class.java to "kitchen_stations",
             com.sunpos.backend.domain.shift.CashierShift::class.java to "cashier_shifts"
         )
 

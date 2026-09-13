@@ -665,7 +665,7 @@ class SyncService(
         val categories = rawCategories.map { c ->
             SyncCategoryDto(
                 categoryId = c.id,
-                branchId = c.branchId.ifBlank { branchId },
+                branchId = c.branchId?.ifBlank { branchId } ?: branchId,
                 name = c.name,
                 description = c.description,
                 sortOrder = c.sortOrder,

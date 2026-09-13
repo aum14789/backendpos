@@ -80,15 +80,49 @@ class CatalogService(
     private val jdbcTemplate: JdbcTemplate,
     private val branchRepository: com.sunpos.backend.domain.organization.BranchRepository? = null
 ) {
-    fun listCategories(branchId: String? = null): List<MenuCategory> {
-        return if (!branchId.isNullOrBlank()) {
-            categoryRepository.findByBranchIdOrderBySortOrderAsc(branchId)
-        } else {
-            categoryRepository.findAll().sortedBy { it.sortOrder }
+    @JvmOverloads
+    fun listCategories(branchId: String? = null, brandId: String? = null): List<MenuCategory> {
+        val all = categoryRepository.findAll().sortedBy { it.sortOrder }
+        return all.filter { c ->
+            val matchBrand = brandId.isNullOrBlank() || c.brandId == null || c.brandId == brandId
+            val matchBranch = branchId.isNullOrBlank() || c.branchId == null || c.branchId == branchId
+            matchBrand && matchBranch
         }
     }
 
-    fun createCategory(category: MenuCategory): MenuCategory = categoryRepository.save(category)
+    fun getCategory(id: String): MenuCategory? = categoryRepository.findById(id).orElse(null)
+
+    fun createCategory(category: MenuCategory): MenuCategory {
+        require(category.name.isNotBlank()) { "ชื่อหมวดหมู่อาหารห้ามว่าง" }
+        return categoryRepository.save(category)
+    }
+
+    fun updateCategory(id: String, updated: MenuCategory): MenuCategory {
+        val existing = categoryRepository.findById(id).orElseThrow { IllegalArgumentException("ไม่พบหมวดหมู่อาหารรหัส $id") }
+        require(updated.name.isNotBlank()) { "ชื่อหมวดหมู่อาหารห้ามว่าง" }
+        existing.name = updated.name.trim()
+        existing.description = updated.description?.trim()
+        existing.sortOrder = updated.sortOrder
+        existing.isActive = updated.isActive
+        if (updated.brandId != null) existing.brandId = updated.brandId
+        if (updated.branchId != null) existing.branchId = updated.branchId
+        return categoryRepository.save(existing)
+    }
+
+    @Transactional
+    fun deleteCategory(id: String) {
+        val existing = categoryRepository.findById(id).orElseThrow { IllegalArgumentException("ไม่พบหมวดหมู่อาหารรหัส $id") }
+        val linkedItems = itemRepository.findByCategoryId(id)
+        if (linkedItems.isNotEmpty()) {
+            throw IllegalStateException("ไม่สามารถลบหมวดหมู่ '${existing.name}' ได้ เนื่องจากมีรายการอาหารผูกอยู่จำนวน ${linkedItems.size} รายการ (กรุณาย้ายหรือลบรายการอาหารก่อน)")
+        }
+        // Cascade detach from printer routing
+        try {
+            jdbcTemplate.update("DELETE FROM printer_menu_categories WHERE category_id = ?", id)
+        } catch (_: Exception) {}
+        categoryRepository.deleteById(id)
+    }
+
 
     fun checkNameUnique(name: String, excludeId: String? = null) {
         val trimmed = name.trim()
@@ -703,13 +737,79 @@ class CatalogService(
 
         return getBranchAllocations()
     }
+
+    @Transactional
+    fun batchUpsertMenuItems(request: BatchUpsertMenuItemsRequest): BatchUpsertResponseDto {
+        require(request.items.isNotEmpty()) { "ไม่มีรายการอาหารที่ต้องการนำเข้า" }
+
+        val allCategories = categoryRepository.findAll().associateBy { it.id }
+        val categoriesByName = allCategories.values.associateBy { it.name.trim().lowercase() }
+
+        // Pre-flight check: validate that every item has a valid category
+        for ((index, itemDto) in request.items.withIndex()) {
+            val rowNum = index + 1
+            require(itemDto.name.isNotBlank()) { "แถวที่ $rowNum: ชื่อรายการอาหารห้ามว่าง" }
+
+            val catId = itemDto.categoryId.trim()
+            val matchedCat = allCategories[catId] ?: categoriesByName[itemDto.categoryId.trim().lowercase()]
+            if (matchedCat == null) {
+                throw IllegalArgumentException("แถวที่ $rowNum ('${itemDto.name}'): ไม่พบหมวดหมู่อาหาร '${itemDto.categoryId}' ในระบบ กรุณาสร้างหมวดหมู่ในระบบก่อนนำเข้า")
+            }
+        }
+
+        var insertedCount = 0
+        var updatedCount = 0
+        val results = mutableListOf<MenuItemResponseDto>()
+
+        for (itemDto in request.items) {
+            val matchedCat = allCategories[itemDto.categoryId.trim()]
+                ?: categoriesByName[itemDto.categoryId.trim().lowercase()]
+            val effectiveCatId = matchedCat?.id ?: itemDto.categoryId
+
+            val hasExistingId = !itemDto.id.isNullOrBlank() && itemRepository.existsById(itemDto.id.trim())
+
+            val normalizedDto = itemDto.copy(
+                categoryId = effectiveCatId,
+                branchId = if (itemDto.branchId.isNotBlank()) itemDto.branchId else (request.targetBranchId ?: "")
+            )
+
+            val savedItem = if (hasExistingId) {
+                updatedCount++
+                updateMenuItem(itemDto.id!!.trim(), normalizedDto)
+            } else {
+                insertedCount++
+                createMenuItem(normalizedDto)
+            }
+            results.add(savedItem)
+        }
+
+        return BatchUpsertResponseDto(
+            insertedCount = insertedCount,
+            updatedCount = updatedCount,
+            totalProcessed = results.size,
+            items = results
+        )
+    }
 }
+
+data class BatchUpsertMenuItemsRequest(
+    val items: List<MenuItemCreateDto> = emptyList(),
+    val targetBranchId: String? = null
+)
+
+data class BatchUpsertResponseDto(
+    val insertedCount: Int,
+    val updatedCount: Int,
+    val totalProcessed: Int,
+    val items: List<MenuItemResponseDto> = emptyList()
+)
 
 data class ValidateComboBranchRequest(
     val menuItemId: String? = null,
     val comboGroups: List<ComboGroupCreateDto> = emptyList(),
     val branchIds: List<String> = emptyList()
 )
+
 
 @RestController
 @RequestMapping("/api/v1/catalog")
@@ -728,14 +828,34 @@ class CatalogController(
         )
     }
     @GetMapping("/categories")
-    fun getCategories(@RequestParam(required = false) branchId: String?): ApiResponse<List<MenuCategory>> {
-        return ApiResponse.success(catalogService.listCategories(branchId))
+    @JvmOverloads
+    fun getCategories(
+        @RequestParam(required = false) branchId: String? = null,
+        @RequestParam(required = false) brandId: String? = null
+    ): ApiResponse<List<MenuCategory>> {
+        return ApiResponse.success(catalogService.listCategories(branchId, brandId))
     }
 
     @PostMapping("/categories")
     @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN')")
     fun createCategory(@RequestBody category: MenuCategory): ApiResponse<MenuCategory> {
-        return ApiResponse.success(catalogService.createCategory(category), "Category created successfully")
+        return ApiResponse.success(catalogService.createCategory(category), "สร้างหมวดหมู่อาหารสำเร็จ")
+    }
+
+    @PutMapping("/categories/{id}")
+    @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun updateCategory(
+        @PathVariable id: String,
+        @RequestBody category: MenuCategory
+    ): ApiResponse<MenuCategory> {
+        return ApiResponse.success(catalogService.updateCategory(id, category), "แก้ไขหมวดหมู่อาหารสำเร็จ")
+    }
+
+    @DeleteMapping("/categories/{id}")
+    @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun deleteCategory(@PathVariable id: String): ApiResponse<String> {
+        catalogService.deleteCategory(id)
+        return ApiResponse.success("ลบหมวดหมู่อาหารสำเร็จ", "Deleted category successfully")
     }
 
     @GetMapping("/items", "/menu-items")
@@ -827,4 +947,15 @@ class CatalogController(
     fun saveBatchBranchAllocations(@RequestBody request: BatchBranchAllocationRequest): ApiResponse<BranchAllocationsResponse> {
         return ApiResponse.success(catalogService.saveBatchBranchAllocations(request), "Branch allocations saved successfully")
     }
+
+    @PostMapping("/items/batch-upsert", "/menu-items/batch-upsert")
+    @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun batchUpsertMenuItems(@RequestBody req: BatchUpsertMenuItemsRequest): ApiResponse<BatchUpsertResponseDto> {
+        val result = catalogService.batchUpsertMenuItems(req)
+        return ApiResponse.success(
+            result,
+            "นำเข้าข้อมูลสำเร็จ: สร้างใหม่ ${result.insertedCount} รายการ, อัปเดต ${result.updatedCount} รายการ"
+        )
+    }
 }
+

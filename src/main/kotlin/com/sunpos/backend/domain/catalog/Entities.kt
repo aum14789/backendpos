@@ -7,7 +7,8 @@ import java.util.UUID
 
 class MenuCategory(
     val id: String = UUID.randomUUID().toString(),
-    var branchId: String = "",
+    var branchId: String? = null,
+    var brandId: String? = null,
     var name: String = "",
     var description: String? = null,
     var sortOrder: Int = 0,

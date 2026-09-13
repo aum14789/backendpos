@@ -49,9 +49,21 @@ class GlobalExceptionHandler {
             .body(ApiResponse.error("ILLEGAL_STATE", msg))
     }
 
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException::class)
+    fun handleDataIntegrityViolation(ex: org.springframework.dao.DataIntegrityViolationException): ResponseEntity<ApiResponse<Nothing>> {
+        val msg = if (ex.message?.contains("violates foreign key constraint") == true) {
+            "ไม่สามารถดำเนินการได้เนื่องจากข้อมูลยังถูกอ้างอิงอยู่โดยรายการอื่นในระบบ (Foreign Key Constraint)"
+        } else {
+            "ข้อมูลขัดแย้งกับข้อจำกัดความสมบูรณ์ของฐานข้อมูล: ${ex.rootCause?.message ?: ex.message}"
+        }
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiResponse.error("DATA_INTEGRITY_VIOLATION", msg))
+    }
+
     @ExceptionHandler(Exception::class)
     fun handleGenericException(ex: Exception): ResponseEntity<ApiResponse<Nothing>> {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(ApiResponse.error("INTERNAL_ERROR", ex.message ?: "An unexpected error occurred"))
     }
 }
+

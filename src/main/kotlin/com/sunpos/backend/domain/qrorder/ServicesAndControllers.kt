@@ -326,7 +326,7 @@ class QrOrderService(
         val allCategories = if (branchCategories.isNotEmpty()) {
             branchCategories
         } else {
-            menuCategoryRepository.findAll().filter { it.branchId == branchId || it.branchId.isBlank() }
+            menuCategoryRepository.findAll().filter { it.branchId == branchId || it.branchId.isNullOrBlank() }
         }.filter { it.isActive }.sortedBy { it.sortOrder }
 
         // 2. Fetch products for this branch (active and availability == AVAILABLE)
