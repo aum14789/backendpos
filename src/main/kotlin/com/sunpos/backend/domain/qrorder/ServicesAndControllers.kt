@@ -29,7 +29,10 @@ class QrOrderService(
     private val branchOrderPushService: com.sunpos.backend.domain.websocket.BranchOrderPushService? = null,
     private val scheduledCatalogRepository: ScheduledCatalogRepository? = null,
     @org.springframework.context.annotation.Lazy
-    private val qrTableSessionService: com.sunpos.backend.domain.table.QrTableSessionService? = null
+    private val qrTableSessionService: com.sunpos.backend.domain.table.QrTableSessionService? = null,
+    private val menuItemModifierGroupRepository: com.sunpos.backend.domain.catalog.MenuItemModifierGroupRepository? = null,
+    private val modifierGroupRepository: com.sunpos.backend.domain.catalog.ModifierGroupRepository? = null,
+    private val modifierRepository: com.sunpos.backend.domain.catalog.ModifierRepository? = null
 ) {
     private val logger = LoggerFactory.getLogger(QrOrderService::class.java)
 
@@ -57,7 +60,7 @@ class QrOrderService(
             branchId = dto.branchId.trim(),
             tableNumber = dto.tableNumber.trim(),
             status = QrOrderStatus.pending,
-            customerNote = dto.customerNote?.trim()?.ifBlank { null },
+            customerNote = null, // ADR 0022: Free-Text Suppression Policy for QR Orders
             totalAmount = calculatedTotal,
             source = "qr",
             cloudReceivedAt = Instant.now(),
@@ -164,7 +167,7 @@ class QrOrderService(
             tableId = resolvedSession?.tableId,
             sessionId = resolvedSession?.id,
             status = QrOrderStatus.pending,
-            customerNote = dto.customerNote?.trim()?.ifBlank { null },
+            customerNote = null, // ADR 0022: Free-Text Suppression Policy for QR Orders
             totalAmount = calculatedTotal,
             source = "qr",
             idempotencyKey = idempotencyKey?.trim()?.ifBlank { null },
@@ -191,10 +194,11 @@ class QrOrderService(
                 quantity = itemDto.quantity,
                 unitPrice = itemDto.unitPrice,
                 options = optionsStr,
-                note = itemDto.note?.trim()?.ifBlank { null }
+                note = null // ADR 0022: Free-Text Suppression Policy for QR Orders
             )
             qrOrderItemRepository.save(orderItem)
         }
+
 
         logger.info("Public QR Order created: id={} table={} branch={} total={}", savedOrder.id, savedOrder.tableNumber, savedOrder.branchId, savedOrder.totalAmount)
         try {
@@ -366,6 +370,26 @@ class QrOrderService(
                         sortOrder = cat.sortOrder,
                         products = prods.map { p ->
                             val effectivePrice = branchPriceMap[p.id] ?: p.basePrice
+                            val groupDtos = if (menuItemModifierGroupRepository != null && modifierGroupRepository != null && modifierRepository != null) {
+                                val links = menuItemModifierGroupRepository.findByIdMenuItemId(p.id)
+                                links.mapNotNull { link ->
+                                    modifierGroupRepository.findById(link.modifierGroupId).map { group ->
+                                        val modifiers = modifierRepository.findByModifierGroupId(group.id)
+                                        com.sunpos.backend.domain.catalog.ModifierGroupResponseDto(
+                                            id = group.id,
+                                            branchId = group.branchId,
+                                            name = group.name,
+                                            minSelection = group.minSelection,
+                                            maxSelection = group.maxSelection,
+                                            isRequired = group.isRequired,
+                                            modifiers = modifiers
+                                        )
+                                    }.orElse(null)
+                                }
+                            } else {
+                                emptyList()
+                            }
+
                             QrMenuProductDto(
                                 id = p.id,
                                 categoryId = p.categoryId,
@@ -373,9 +397,11 @@ class QrOrderService(
                                 description = p.description,
                                 price = effectivePrice,
                                 imageUrl = p.imageUrl,
-                                isAvailable = true
+                                isAvailable = true,
+                                modifierGroups = groupDtos
                             )
                         }
+
                     )
                 }
             }

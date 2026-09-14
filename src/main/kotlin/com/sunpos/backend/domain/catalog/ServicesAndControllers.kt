@@ -272,10 +272,16 @@ class CatalogService(
         }
 
         if (dto.isCombo || dto.specialType == "S" || dto.comboGroups.isNotEmpty()) {
+            for (gDto in dto.comboGroups) {
+                require(gDto.choices.any { it.isDefault }) {
+                    "ทุกขั้นตอนในเมนูชุดต้องมีตัวเลือกเริ่มต้น (Default Choice) อย่างน้อย 1 รายการ: '${gDto.name}'"
+                }
+            }
             val comboDef = comboDefinitionRepository.save(
                 ComboDefinition(menuItemId = saved.id, name = dto.name)
             )
             dto.comboGroups.forEachIndexed { groupIndex, groupDto ->
+
                 val group = comboGroupRepository.save(
                     ComboGroup(
                         comboDefinitionId = comboDef.id,
@@ -380,7 +386,13 @@ class CatalogService(
 
         // Update Combo definition if applicable
         if (dto.isCombo || dto.specialType == "S" || dto.comboGroups.isNotEmpty()) {
+            for (gDto in dto.comboGroups) {
+                require(gDto.choices.any { it.isDefault }) {
+                    "ทุกขั้นตอนในเมนูชุดต้องมีตัวเลือกเริ่มต้น (Default Choice) อย่างน้อย 1 รายการ: '${gDto.name}'"
+                }
+            }
             val existingDefOpt = comboDefinitionRepository.findByMenuItemId(id)
+
             if (existingDefOpt.isPresent) {
                 val def = existingDefOpt.get()
                 val oldGroups = comboGroupRepository.findByComboDefinitionId(def.id)
@@ -654,9 +666,67 @@ class CatalogService(
         return items.map { getMenuItemDetails(it.id) }
     }
 
+    fun getModifierGroups(branchId: String? = null): List<ModifierGroupResponseDto> {
+        val groups = if (!branchId.isNullOrBlank()) {
+            modifierGroupRepository.findByBranchId(branchId)
+        } else {
+            modifierGroupRepository.findAll()
+        }
+        return groups.map { group ->
+            val modifiers = modifierRepository.findByModifierGroupId(group.id)
+            ModifierGroupResponseDto(
+                id = group.id,
+                branchId = group.branchId,
+                name = group.name,
+                minSelection = group.minSelection,
+                maxSelection = group.maxSelection,
+                isRequired = group.isRequired,
+                modifiers = modifiers
+            )
+        }
+    }
+
     fun createModifierGroup(group: ModifierGroup): ModifierGroup = modifierGroupRepository.save(group)
 
+    fun updateModifierGroup(id: String, group: ModifierGroup): ModifierGroup {
+        val existing = modifierGroupRepository.findById(id)
+            .orElseThrow { NoSuchElementException("Modifier group '$id' not found") }
+        existing.name = group.name
+        existing.minSelection = group.minSelection
+        existing.maxSelection = group.maxSelection
+        existing.isRequired = group.isRequired
+        if (!group.branchId.isNullOrBlank()) {
+            existing.branchId = group.branchId
+        }
+        return modifierGroupRepository.save(existing)
+    }
+
+    @Transactional
+    fun deleteModifierGroup(id: String) {
+        modifierRepository.findByModifierGroupId(id).forEach {
+            modifierRepository.deleteById(it.id)
+        }
+        menuItemModifierGroupRepository.findAll().filter { it.modifierGroupId == id }.forEach {
+            menuItemModifierGroupRepository.deleteById(it.id)
+        }
+        modifierGroupRepository.deleteById(id)
+    }
+
     fun createModifier(modifier: Modifier): Modifier = modifierRepository.save(modifier)
+
+    fun updateModifier(id: String, modifier: Modifier): Modifier {
+        val existing = modifierRepository.findById(id)
+            .orElseThrow { NoSuchElementException("Modifier '$id' not found") }
+        existing.name = modifier.name
+        existing.price = modifier.price
+        existing.isActive = modifier.isActive
+        return modifierRepository.save(existing)
+    }
+
+    fun deleteModifier(id: String) {
+        modifierRepository.deleteById(id)
+    }
+
 
     fun getBranchAllocations(): BranchAllocationsResponse {
         val allBranches = menuItemBranchRepository.findAll()
@@ -924,10 +994,28 @@ class CatalogController(
         return ApiResponse.success(Unit, "Menu item deleted successfully")
     }
 
+    @GetMapping("/modifier-groups")
+    fun getModifierGroups(@RequestParam(required = false) branchId: String?): ApiResponse<List<ModifierGroupResponseDto>> {
+        return ApiResponse.success(catalogService.getModifierGroups(branchId))
+    }
+
     @PostMapping("/modifier-groups")
     @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN')")
     fun createModifierGroup(@RequestBody group: ModifierGroup): ApiResponse<ModifierGroup> {
         return ApiResponse.success(catalogService.createModifierGroup(group), "Modifier group created successfully")
+    }
+
+    @PutMapping("/modifier-groups/{id}")
+    @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun updateModifierGroup(@PathVariable id: String, @RequestBody group: ModifierGroup): ApiResponse<ModifierGroup> {
+        return ApiResponse.success(catalogService.updateModifierGroup(id, group), "Modifier group updated successfully")
+    }
+
+    @DeleteMapping("/modifier-groups/{id}")
+    @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun deleteModifierGroup(@PathVariable id: String): ApiResponse<Unit> {
+        catalogService.deleteModifierGroup(id)
+        return ApiResponse.success(Unit, "Modifier group deleted successfully")
     }
 
     @PostMapping("/modifiers")
@@ -935,6 +1023,20 @@ class CatalogController(
     fun createModifier(@RequestBody modifier: Modifier): ApiResponse<Modifier> {
         return ApiResponse.success(catalogService.createModifier(modifier), "Modifier created successfully")
     }
+
+    @PutMapping("/modifiers/{id}")
+    @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun updateModifier(@PathVariable id: String, @RequestBody modifier: Modifier): ApiResponse<Modifier> {
+        return ApiResponse.success(catalogService.updateModifier(id, modifier), "Modifier updated successfully")
+    }
+
+    @DeleteMapping("/modifiers/{id}")
+    @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun deleteModifier(@PathVariable id: String): ApiResponse<Unit> {
+        catalogService.deleteModifier(id)
+        return ApiResponse.success(Unit, "Modifier deleted successfully")
+    }
+
 
     @GetMapping("/branch-allocations")
     fun getBranchAllocations(): ApiResponse<BranchAllocationsResponse> {

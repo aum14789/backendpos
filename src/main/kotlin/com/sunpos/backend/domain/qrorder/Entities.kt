@@ -143,8 +143,10 @@ data class QrMenuProductDto(
     val description: String? = null,
     val price: BigDecimal,
     val imageUrl: String? = null,
-    val isAvailable: Boolean = true
+    val isAvailable: Boolean = true,
+    val modifierGroups: List<com.sunpos.backend.domain.catalog.ModifierGroupResponseDto> = emptyList()
 )
+
 
 data class QrMenuCategoryDto(
     val id: String,

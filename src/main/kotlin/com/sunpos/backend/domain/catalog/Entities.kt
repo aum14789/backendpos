@@ -212,12 +212,14 @@ data class MenuItemResponseDto(
 
 data class ModifierGroupResponseDto(
     val id: String = "",
+    val branchId: String = "",
     val name: String = "",
     val minSelection: Int = 0,
     val maxSelection: Int = 1,
     val isRequired: Boolean = false,
     val modifiers: List<Modifier> = emptyList()
 )
+
 
 data class ComboDefinitionResponseDto(
     val id: String = "",
