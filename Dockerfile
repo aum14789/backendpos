@@ -5,7 +5,7 @@ WORKDIR /app
 # Cache Maven dependencies
 COPY .mvn/ .mvn
 COPY mvnw pom.xml ./
-RUN chmod +x mvnw && ./mvnw dependency:go-offline -B
+RUN chmod +x mvnw && (./mvnw dependency:go-offline -B || true)
 
 # Build application JAR
 COPY src ./src
