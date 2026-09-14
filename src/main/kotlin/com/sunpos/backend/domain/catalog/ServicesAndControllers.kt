@@ -101,6 +101,7 @@ class CatalogService(
         val existing = categoryRepository.findById(id).orElseThrow { IllegalArgumentException("ไม่พบหมวดหมู่อาหารรหัส $id") }
         require(updated.name.isNotBlank()) { "ชื่อหมวดหมู่อาหารห้ามว่าง" }
         existing.name = updated.name.trim()
+        existing.prefix = updated.prefix?.trim()
         existing.description = updated.description?.trim()
         existing.sortOrder = updated.sortOrder
         existing.isActive = updated.isActive

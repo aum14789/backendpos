@@ -10,6 +10,7 @@ class MenuCategory(
     var branchId: String? = null,
     var brandId: String? = null,
     var name: String = "",
+    var prefix: String? = null,
     var description: String? = null,
     var sortOrder: Int = 0,
     var isActive: Boolean = true,
