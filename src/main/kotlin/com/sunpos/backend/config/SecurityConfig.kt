@@ -113,6 +113,7 @@ class SecurityConfig(
                         "/error",
                         "/actuator/health"
                     ).permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/buffet/promotions").permitAll()
                     .requestMatchers("/api/internal/**").hasAnyRole("BRANCH_SERVICE", "INTERNAL", "SUPER_ADMIN", "ADMIN")
                     .requestMatchers("/api/v1/**").authenticated()
                     .anyRequest().authenticated()
@@ -126,7 +127,7 @@ class SecurityConfig(
 }
 
 // Filter validating Branch Active Key or Internal Secret
-// รองรับ /api/internal/** และ /api/*/tables/**/qr-session
+// รองรับ /api/internal/**, /api/*/tables/**/qr-session และ Device Pre-load
 class InternalAuthFilter(
     private val branchRepository: BranchRepository
 ) : OncePerRequestFilter() {
@@ -142,8 +143,13 @@ class InternalAuthFilter(
         val isTableQrSessionPath =
             (path.startsWith("/api/v1/tables/") || path.startsWith("/api/tables/")) &&
                     path.contains("/qr-session")
+        val isDevicePreloadPath = request.method.equals("GET", ignoreCase = true) && (
+            path.startsWith("/api/v1/buffet/promotions") ||
+            path.startsWith("/api/v1/menus") ||
+            path.startsWith("/api/v1/tables")
+        )
 
-        if (isInternalPath || isTableQrSessionPath) {
+        if (isInternalPath || isTableQrSessionPath || isDevicePreloadPath) {
             val branchId = request.getHeader("branchId")
                 ?: request.getHeader("X-Branch-Id")
                 ?: request.getHeader("branch-id")
@@ -162,11 +168,12 @@ class InternalAuthFilter(
                     isValidActiveKey(branchId.trim(), activeKey.trim())
 
             if (isSecretValid || isKeyValid) {
-                val principal = branchId ?: "INTERNAL_SERVICE"
+                val principal = branchId ?: "DEVICE_SERVICE"
                 val auth = UsernamePasswordAuthenticationToken(
                     principal,
                     null,
                     listOf(
+                        SimpleGrantedAuthority("ROLE_BRANCH_DEVICE"),
                         SimpleGrantedAuthority("ROLE_BRANCH_SERVICE"),
                         SimpleGrantedAuthority("ROLE_INTERNAL")
                     )
