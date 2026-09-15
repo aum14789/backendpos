@@ -116,8 +116,16 @@ class BuffetService(
                 else promotionRepository.findByBranchId(branchId)
             }
         } else if (!brandId.isNullOrBlank()) {
-            if (status != null) promotionRepository.findByBrandIdAndStatus(brandId, status)
-            else promotionRepository.findByBrandId(brandId)
+            val brandBranches = branchRepository.findByBrandId(brandId).map { it.id }.toSet()
+            val all = if (status != null) {
+                val byStatus = promotionRepository.findByField("status", status.name)
+                if (byStatus.isNotEmpty()) byStatus else promotionRepository.findAll().filter { it.status == status }
+            } else {
+                promotionRepository.findAll()
+            }
+            all.filter {
+                it.brandId == brandId || (it.branchId != null && brandBranches.contains(it.branchId))
+            }
         } else {
             if (status != null) promotionRepository.findAll().filter { it.status == status }
             else promotionRepository.findAll()
@@ -186,8 +194,16 @@ class BuffetService(
      */
     @Transactional
     fun createPromotion(dto: CreateBuffetPromotionDto, createdBy: String? = null): BuffetPromotionResponseDto {
+        var resolvedBrandId = dto.brandId
+        if (resolvedBrandId.isBlank() && !dto.branchId.isNullOrBlank()) {
+            val branch = branchRepository.findById(dto.branchId).orElse(null)
+            if (branch != null && !branch.brandId.isNullOrBlank()) {
+                resolvedBrandId = branch.brandId ?: ""
+            }
+        }
+
         val promo = BuffetPromotion(
-            brandId = dto.brandId,
+            brandId = resolvedBrandId,
             branchId = dto.branchId,
             name = dto.name,
             pricePerPerson = dto.pricePerPerson,
