@@ -4,6 +4,9 @@ server:
     context-path: /
 
 spring:
+  output:
+    ansi:
+      enabled: ALWAYS
   application:
     name: sunpos-backend
 
@@ -49,8 +52,18 @@ app:
     base-url: ${QR_ORDER_BASE_URL:https://sunqrorder.vercel.app}
 
 logging:
+  pattern:
+    console: "%clr(%d{yyyy-MM-dd HH:mm:ss}){faint} %clr(%-5level) %clr([%-24.24logger{24}]){cyan} : %msg%n"
   level:
-    root: INFO
-    com.sunpos.backend: DEBUG
-    org.springframework.security: INFO
-    org.flywaydb: INFO
+    root: WARN
+    com.sunpos.backend: INFO
+    org.springframework.boot.StartupInfoLogger: INFO
+    org.springframework.boot.web.embedded.tomcat.TomcatWebServer: INFO
+    org.springframework.web: WARN
+    org.springframework.security: WARN
+    org.flywaydb: WARN
+    com.zaxxer.hikari: WARN
+    org.hibernate: WARN
+    org.apache.catalina: WARN
+    org.apache.coyote: WARN
+
