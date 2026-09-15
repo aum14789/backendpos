@@ -379,4 +379,46 @@ class AutoProvisionedRawStockPureTest {
         assertTrue(stockRepo.stocks.isEmpty(), "Waste warehouse should have no stocks deducted")
         assertTrue(movementRepo.movements.isEmpty(), "Waste warehouse should have no movements")
     }
+
+    @Test
+    fun `ticket 04 - goods receipt and transfer in offsets auto-provisioned negative stock balance`() {
+        val stockRepo = FakeInventoryStockRepository()
+        val wacService = WacCalculationService()
+
+        // 1. Initial state: Raw Item has been auto-provisioned with negative balance -2.0000
+        val rawStock = InventoryStock(
+            id = "stock-01",
+            warehouseId = "wh-main",
+            inventoryItemId = "item-raw-wagyu",
+            quantity = BigDecimal("-2.0000"),
+            weightedAverageCost = BigDecimal("500.0000"),
+            isAutoProvisioned = true
+        )
+        stockRepo.save(rawStock)
+
+        // 2. Receiving 10.0000 units via Goods Receipt (PO Receiving) @ 480.0000 THB/unit
+        val recQty = BigDecimal("10.0000")
+        val recCost = BigDecimal("480.0000")
+
+        val newWac = wacService.calculateNewWac(rawStock.quantity, rawStock.weightedAverageCost, recQty, recCost)
+        rawStock.quantity = rawStock.quantity.add(recQty).setScale(4)
+        rawStock.weightedAverageCost = newWac
+        stockRepo.save(rawStock)
+
+        // Verifications:
+        // Net balance becomes: -2.0000 + 10.0000 = +8.0000
+        assertEquals(BigDecimal("8.0000"), rawStock.quantity)
+        // New WAC is established by incoming goods receipt: 480.0000
+        assertEquals(BigDecimal("480.0000"), rawStock.weightedAverageCost)
+
+        // 3. Physical Stock Count audit: Actual counted is 7.5000 -> variance is -0.5000
+        val actualCounted = BigDecimal("7.5000")
+        val variance = actualCounted.subtract(rawStock.quantity)
+        assertEquals(BigDecimal("-0.5000"), variance)
+
+        rawStock.quantity = actualCounted
+        stockRepo.save(rawStock)
+        assertEquals(BigDecimal("7.5000"), rawStock.quantity)
+    }
 }
+

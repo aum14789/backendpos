@@ -25,7 +25,9 @@ class WacCalculationService {
         val rCost = receivedUnitCost.setScale(COST_SCALE, ROUNDING)
 
         val totalNewQty = oQty.add(rQty)
-        if (totalNewQty.compareTo(BigDecimal.ZERO) <= 0) {
+        // When initial stock is negative or zero, or the new net balance remains zero/negative,
+        // the new cost basis is fully defined by the incoming receipt cost.
+        if (oQty.compareTo(BigDecimal.ZERO) <= 0 || totalNewQty.compareTo(BigDecimal.ZERO) <= 0) {
             return rCost
         }
 
