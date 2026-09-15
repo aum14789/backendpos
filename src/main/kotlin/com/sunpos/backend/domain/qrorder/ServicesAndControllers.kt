@@ -107,6 +107,9 @@ class QrOrderService(
     fun createPublicOrder(dto: CreatePublicOrderRequest, idempotencyKey: String?): PublicOrderResponse {
         require(dto.branchId.isNotBlank()) { "branchId cannot be blank" }
         require(dto.tableNumber.isNotBlank()) { "tableNumber cannot be blank" }
+        require(dto.tableNumber.trim().uppercase() !in listOf("TAKEAWAY", "DELIVERY")) {
+            "การสั่งอาหารผ่าน QR Code สงวนไว้สำหรับโต๊ะรับประทานในร้าน (Dine-in) เท่านั้น สำหรับซื้อกลับบ้านและเดลิเวอรี กรุณาสั่งที่เคาน์เตอร์แคชเชียร์"
+        }
         require(dto.items.isNotEmpty()) { "Order must contain at least one item" }
 
         val requestedBranch = dto.branchId.trim()
