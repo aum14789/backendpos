@@ -5,6 +5,22 @@ import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
 
+class GlobalProduct(
+    val id: String = UUID.randomUUID().toString(),
+    var companyId: String = "comp-001",
+    var code: String = "",
+    var name: String = "",
+    var description: String? = null,
+    val createdAt: Instant = Instant.now()
+)
+
+data class GlobalProductCreateDto(
+    val companyId: String = "comp-001",
+    val code: String? = null,
+    val name: String = "",
+    val description: String? = null
+)
+
 class MenuCategory(
     val id: String = UUID.randomUUID().toString(),
     var branchId: String? = null,
@@ -23,6 +39,7 @@ class MenuItem(
     var branchId: String = "",
     var brandId: String? = null,
     var categoryId: String = "",
+    var globalProductId: String? = null,
     var name: String = "",
     var description: String? = null,
     var sku: String? = null,
@@ -162,6 +179,8 @@ data class MenuItemCreateDto(
     val branchId: String = "",
     val brandId: String? = null,
     val categoryId: String = "",
+    val globalProductId: String? = null,
+    val autoCreateGlobalProduct: Boolean = false,
     val name: String = "",
     val description: String? = null,
     val sku: String? = null,
@@ -190,6 +209,8 @@ data class MenuItemResponseDto(
     val brandId: String? = null,
     val categoryId: String = "",
     val categoryName: String = "",
+    val globalProductId: String? = null,
+    val globalProductName: String? = null,
     val name: String = "",
     val description: String? = null,
     val sku: String? = null,

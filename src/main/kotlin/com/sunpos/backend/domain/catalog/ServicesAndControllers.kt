@@ -14,6 +14,13 @@ import java.util.Optional
 import java.util.UUID
 
 @Repository
+class GlobalProductRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<GlobalProduct>(jdbcTemplate, "global_products", GlobalProduct::class.java) {
+    fun findByCompanyId(companyId: String): List<GlobalProduct> = findByField("companyId", companyId)
+    fun findByCode(code: String): Optional<GlobalProduct> = findOneByField("code", code)
+    fun findByName(name: String): Optional<GlobalProduct> = findOneByField("name", name)
+}
+
+@Repository
 class MenuCategoryRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<MenuCategory>(jdbcTemplate, "menu_categories", MenuCategory::class.java) {
     fun findByBranchIdOrderBySortOrderAsc(branchId: String): List<MenuCategory> =
         findByField("branchId", branchId).sortedBy { it.sortOrder }
@@ -78,7 +85,8 @@ class CatalogService(
     private val comboChoiceRepository: ComboChoiceRepository,
     private val menuItemBranchRepository: MenuItemBranchRepository,
     private val jdbcTemplate: JdbcTemplate,
-    private val branchRepository: com.sunpos.backend.domain.organization.BranchRepository? = null
+    private val branchRepository: com.sunpos.backend.domain.organization.BranchRepository? = null,
+    private val globalProductRepository: GlobalProductRepository? = null
 ) {
     @JvmOverloads
     fun listCategories(branchId: String? = null, brandId: String? = null): List<MenuCategory> {
@@ -244,11 +252,31 @@ class CatalogService(
             }
         }
 
+        val resolvedGlobalProductId = if (!dto.globalProductId.isNullOrBlank()) {
+            dto.globalProductId
+        } else if (dto.autoCreateGlobalProduct) {
+            val existing = globalProductRepository?.findByName(dto.name.trim())
+            if (existing != null && existing.isPresent) {
+                existing.get().id
+            } else {
+                val newGp = GlobalProduct(
+                    companyId = "comp-001",
+                    code = if (!dto.sku.isNullOrBlank()) dto.sku else "GP-${System.currentTimeMillis() % 100000}",
+                    name = dto.name.trim(),
+                    description = dto.description
+                )
+                globalProductRepository?.save(newGp)?.id ?: newGp.id
+            }
+        } else {
+            null
+        }
+
         val item = MenuItem(
             id = if (!dto.id.isNullOrBlank()) dto.id else UUID.randomUUID().toString(),
             branchId = dto.branchId,
             brandId = dto.brandId,
             categoryId = dto.categoryId,
+            globalProductId = resolvedGlobalProductId,
             name = dto.name.trim(),
             description = dto.description,
             sku = dto.sku,
@@ -367,6 +395,22 @@ class CatalogService(
         if (dto.branchId.isNotBlank()) item.branchId = dto.branchId
         if (dto.brandId != null) item.brandId = dto.brandId
         if (dto.categoryId.isNotBlank()) item.categoryId = dto.categoryId
+        if (dto.globalProductId != null) {
+            item.globalProductId = dto.globalProductId.ifBlank { null }
+        } else if (dto.autoCreateGlobalProduct && item.globalProductId.isNullOrBlank()) {
+            val existing = globalProductRepository?.findByName(dto.name.trim())
+            item.globalProductId = if (existing != null && existing.isPresent) {
+                existing.get().id
+            } else {
+                val newGp = GlobalProduct(
+                    companyId = "comp-001",
+                    code = if (!dto.sku.isNullOrBlank()) dto.sku else "GP-${System.currentTimeMillis() % 100000}",
+                    name = dto.name.trim(),
+                    description = dto.description
+                )
+                globalProductRepository?.save(newGp)?.id ?: newGp.id
+            }
+        }
         item.name = dto.name.trim()
         item.description = dto.description
         item.sku = dto.sku
@@ -631,6 +675,8 @@ class CatalogService(
             brandId = item.brandId,
             categoryId = item.categoryId,
             categoryName = category?.name ?: "",
+            globalProductId = item.globalProductId,
+            globalProductName = item.globalProductId?.let { gpid -> globalProductRepository?.findById(gpid)?.orElse(null)?.name },
             name = item.name,
             description = item.description,
             sku = item.sku,
@@ -862,6 +908,26 @@ class CatalogService(
             items = results
         )
     }
+
+    fun listGlobalProducts(companyId: String = "comp-001"): List<GlobalProduct> {
+        return globalProductRepository?.findByCompanyId(companyId)?.sortedBy { it.name } ?: emptyList()
+    }
+
+    fun createGlobalProduct(dto: GlobalProductCreateDto): GlobalProduct {
+        val code = if (!dto.code.isNullOrBlank()) dto.code else "GP-${System.currentTimeMillis() % 100000}"
+        val gp = GlobalProduct(
+            companyId = dto.companyId,
+            code = code,
+            name = dto.name.trim(),
+            description = dto.description
+        )
+        return globalProductRepository?.save(gp) ?: gp
+    }
+
+    fun listMenuItemsByGlobalProduct(globalProductId: String): List<MenuItemResponseDto> {
+        val items = itemRepository.findAll().filter { it.globalProductId == globalProductId }
+        return items.map { getMenuItemDetails(it.id) }
+    }
 }
 
 data class BatchUpsertMenuItemsRequest(
@@ -1059,6 +1125,32 @@ class CatalogController(
             result,
             "นำเข้าข้อมูลสำเร็จ: สร้างใหม่ ${result.insertedCount} รายการ, อัปเดต ${result.updatedCount} รายการ"
         )
+    }
+
+    // --- Global Products (Tier 1 Product Concepts) ---
+    @GetMapping("/global-products")
+    fun listGlobalProducts(
+        @RequestParam(required = false, defaultValue = "comp-001") companyId: String,
+        @RequestParam(required = false) search: String?
+    ): ApiResponse<List<GlobalProduct>> {
+        val all = catalogService.listGlobalProducts(companyId)
+        val filtered = if (!search.isNullOrBlank()) {
+            all.filter { it.name.contains(search, ignoreCase = true) || it.code.contains(search, ignoreCase = true) }
+        } else {
+            all
+        }
+        return ApiResponse.success(filtered)
+    }
+
+    @PostMapping("/global-products")
+    @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun createGlobalProduct(@RequestBody dto: GlobalProductCreateDto): ApiResponse<GlobalProduct> {
+        return ApiResponse.success(catalogService.createGlobalProduct(dto), "สร้างสินค้าแม่บทระดับองค์กรสำเร็จ")
+    }
+
+    @GetMapping("/global-products/{id}/items")
+    fun listMenuItemsByGlobalProduct(@PathVariable id: String): ApiResponse<List<MenuItemResponseDto>> {
+        return ApiResponse.success(catalogService.listMenuItemsByGlobalProduct(id))
     }
 }
 
