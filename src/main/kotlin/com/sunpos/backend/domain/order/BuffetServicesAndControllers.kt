@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.*
+import java.math.BigDecimal
 import java.time.Instant
 
 // ──────────────────────────────────────────────────────
@@ -213,15 +214,40 @@ class BuffetService(
         )
         promotionRepository.save(promo)
 
-        for (itemId in dto.menuItemIds) {
+        val itemsToSave = if (dto.items.isNotEmpty()) {
+            dto.items
+        } else {
+            dto.menuItemIds.map { BuffetPromotionItemLinkDto(menuItemId = it) }
+        }
+
+        for (item in itemsToSave) {
             val link = BuffetPromotionMenuItem(
                 promotionId = promo.id,
-                menuItemId = itemId
+                menuItemId = item.menuItemId,
+                isFree = item.isFree,
+                additionalPrice = item.additionalPrice
             )
             promotionMenuItemRepository.save(link)
         }
 
-        return toPromotionResponseDto(promo, dto.menuItemIds.size)
+        // Harmonize with BuffetPromotionTier so both models remain 100% unified
+        val tier = BuffetPromotionTier(
+            id = promo.id,
+            promotionId = promo.id,
+            name = promo.name,
+            adultPrice = promo.pricePerPerson,
+            childPrice = promo.pricePerPerson.multiply(BigDecimal("0.5")),
+            timeLimitMinutes = promo.durationMinutes,
+            brandId = promo.brandId,
+            branchId = promo.branchId,
+            isActive = true
+        )
+        tierRepository.save(tier)
+        for (item in itemsToSave) {
+            tierMenuItemRepository.save(BuffetTierMenuItem(buffetTierId = tier.id, menuItemId = item.menuItemId))
+        }
+
+        return toPromotionResponseDto(promo, itemsToSave.size)
     }
 
     /**
@@ -240,15 +266,39 @@ class BuffetService(
         promo.updatedBy = updatedBy
         promotionRepository.save(promo)
 
-        if (dto.menuItemIds != null) {
+        val itemsToSave = if (dto.items != null) {
+            dto.items
+        } else if (dto.menuItemIds != null) {
+            dto.menuItemIds.map { BuffetPromotionItemLinkDto(menuItemId = it) }
+        } else null
+
+        if (itemsToSave != null) {
             promotionMenuItemRepository.deleteByIdPromotionId(promo.id)
-            for (itemId in dto.menuItemIds) {
+            for (item in itemsToSave) {
                 val link = BuffetPromotionMenuItem(
                     promotionId = promo.id,
-                    menuItemId = itemId
+                    menuItemId = item.menuItemId,
+                    isFree = item.isFree,
+                    additionalPrice = item.additionalPrice
                 )
                 promotionMenuItemRepository.save(link)
             }
+
+            // Sync with tier
+            tierMenuItemRepository.deleteByIdBuffetTierId(promo.id)
+            for (item in itemsToSave) {
+                tierMenuItemRepository.save(BuffetTierMenuItem(buffetTierId = promo.id, menuItemId = item.menuItemId))
+            }
+        }
+
+        // Sync tier metadata
+        tierRepository.findById(promo.id).ifPresent { t ->
+            t.name = promo.name
+            t.adultPrice = promo.pricePerPerson
+            t.childPrice = promo.pricePerPerson.multiply(BigDecimal("0.5"))
+            t.timeLimitMinutes = promo.durationMinutes
+            t.isActive = promo.status == BuffetPromotionStatus.ACTIVE
+            tierRepository.save(t)
         }
 
         val count = promotionMenuItemRepository.findMenuItemIdsByPromotionId(promo.id).size

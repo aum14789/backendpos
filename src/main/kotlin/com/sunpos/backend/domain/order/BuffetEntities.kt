@@ -154,7 +154,8 @@ data class CreateBuffetPromotionDto(
     val name: String = "",
     val pricePerPerson: BigDecimal = BigDecimal.ZERO,
     val durationMinutes: Int = 90,
-    val menuItemIds: List<String> = emptyList()
+    val menuItemIds: List<String> = emptyList(),
+    val items: List<BuffetPromotionItemLinkDto> = emptyList()
 )
 
 data class UpdateBuffetPromotionDto(
@@ -162,7 +163,8 @@ data class UpdateBuffetPromotionDto(
     val pricePerPerson: BigDecimal = BigDecimal.ZERO,
     val durationMinutes: Int = 90,
     val status: BuffetPromotionStatus = BuffetPromotionStatus.ACTIVE,
-    val menuItemIds: List<String>? = null
+    val menuItemIds: List<String>? = null,
+    val items: List<BuffetPromotionItemLinkDto>? = null
 )
 
 data class BuffetPromotionResponseDto(
