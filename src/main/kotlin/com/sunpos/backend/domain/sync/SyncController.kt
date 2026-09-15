@@ -269,6 +269,7 @@ class SyncService(
     private val buffetPromotionTierRepository: com.sunpos.backend.domain.order.BuffetPromotionTierRepository? = null,
     private val buffetTierMenuItemRepository: com.sunpos.backend.domain.order.BuffetTierMenuItemRepository? = null,
     private val buffetPromotionRepository: com.sunpos.backend.domain.order.BuffetPromotionRepository? = null,
+    private val buffetPromotionMenuItemRepository: com.sunpos.backend.domain.order.BuffetPromotionMenuItemRepository? = null,
     private val promotionRepository: com.sunpos.backend.domain.promotion.PromotionRepository? = null,
     private val userRepository: com.sunpos.backend.domain.identity.UserRepository? = null,
     private val userRoleRepository: com.sunpos.backend.domain.identity.UserRoleRepository? = null,
@@ -451,17 +452,22 @@ class SyncService(
                 val orderOpt = orderRepository.findById(dto.aggregateId)
                 if (orderOpt.isPresent) {
                     val order = orderOpt.get()
-                    val statusStr = (payloadMap["status"] as? String)
-                        ?.uppercase()
-                        ?: dto.eventType.removePrefix("ORDER_STATUS_")
-                    val newStatus = try {
-                        OrderStatus.valueOf(statusStr)
-                    } catch (_: Exception) {
-                        OrderStatus.COMPLETED
-                    }
-                    order.status = newStatus
-                    if (newStatus == OrderStatus.COMPLETED || newStatus == OrderStatus.PAID) {
-                        order.financialStatus = FinancialStatus.PAID
+                    when (dto.eventType) {
+                        "ORDER_STATUS_PAID" -> {
+                            order.financialStatus = FinancialStatus.PAID
+                            // Keep status consistent if POS also marked it completed
+                            val targetStatus = (payloadMap["status"] as? String)?.let {
+                                try { OrderStatus.valueOf(it) } catch (_: Exception) { null }
+                            }
+                            if (targetStatus != null) order.status = targetStatus
+                        }
+                        "ORDER_STATUS_CANCELLED" -> {
+                            order.status = OrderStatus.CANCELLED
+                        }
+                        "ORDER_STATUS_COMPLETED" -> {
+                            order.status = OrderStatus.COMPLETED
+                            order.financialStatus = FinancialStatus.PAID
+                        }
                     }
                     order.updatedAt = Instant.now()
                     orderRepository.save(order)
@@ -568,12 +574,14 @@ class SyncService(
             "ORDER_CUSTOMER_LINKED" -> {
                 val orderId = (payloadMap["orderId"] as? String) ?: dto.aggregateId
                 val customerId = payloadMap["customerId"] as? String
-                val orderOpt = orderRepository.findById(orderId)
-                if (orderOpt.isPresent) {
-                    val order = orderOpt.get()
-                    order.customerId = customerId
-                    order.updatedAt = Instant.now()
-                    orderRepository.save(order)
+                if (orderId.isNotBlank() && !customerId.isNullOrBlank()) {
+                    val orderOpt = orderRepository.findById(orderId)
+                    if (orderOpt.isPresent) {
+                        val order = orderOpt.get()
+                        order.customerId = customerId
+                        order.updatedAt = Instant.now()
+                        orderRepository.save(order)
+                    }
                 }
             }
 
@@ -586,7 +594,7 @@ class SyncService(
                 } else {
                     BigDecimal((payloadMap["orderAmount"] as? Number)?.toDouble() ?: 0.0).setScale(SCALE, ROUNDING)
                 }
-                if (customerId.isNotBlank() && orderId.isNotBlank() && orderAmount > BigDecimal.ZERO) {
+                if (customerId.isNotBlank() && orderAmount > BigDecimal.ZERO) {
                     crmService?.earnPointsForOrder(customerId, orderId, orderAmount)
                 }
             }
@@ -647,8 +655,11 @@ class SyncService(
     fun getDelta(branchId: String, sinceTimestamp: Instant?, deviceId: String? = null): SyncDeltaResponse {
         val since = sinceTimestamp ?: Instant.EPOCH
 
+        val branch = branchRepository?.findById(branchId)?.orElse(null)
+        val targetBrandId = branch?.brandId ?: ""
+
         // 1. Branch details
-        val branchInfo = branchRepository?.findById(branchId)?.orElse(null)?.let { b ->
+        val branchInfo = branch?.let { b ->
             SyncBranchDto(
                 branchId = b.id,
                 companyId = b.companyId,
@@ -660,8 +671,15 @@ class SyncService(
             )
         }
 
-        // 2. Menu Categories
-        val rawCategories = categoryRepository.findByBranchIdOrderBySortOrderAsc(branchId)
+        // 2. Menu Categories (Branch categories + Inherited Brand-level categories)
+        val allCategories = categoryRepository.findAll()
+        val rawCategories = allCategories.filter { c ->
+            c.isActive && (
+                c.branchId == branchId ||
+                (c.branchId.isNullOrBlank() && (targetBrandId.isBlank() || c.brandId == targetBrandId || c.brandId.isNullOrBlank()))
+            )
+        }.sortedBy { it.sortOrder }
+
         val categories = rawCategories.map { c ->
             SyncCategoryDto(
                 categoryId = c.id,
@@ -673,53 +691,11 @@ class SyncService(
             )
         }
 
-        // 3. Menu Items (Allocated & Active for this Branch)
-        val allBranchLinks = if (menuItemBranchRepository != null) {
-            menuItemBranchRepository.findByBranchId(branchId)
-        } else emptyList()
-
-        val rawMenuItems: List<MenuItem> = if (allBranchLinks.isNotEmpty()) {
-            val activeItemIds = allBranchLinks.filter { it.isActive }.map { it.menuItemId }.toSet()
-            val branchDirectItems = menuItemRepository.findByBranchId(branchId).filter { it.isActive }
-            val linkedItems = if (activeItemIds.isNotEmpty()) {
-                menuItemRepository.findAll().filter { activeItemIds.contains(it.id) && it.isActive }
-            } else {
-                emptyList()
-            }
-            (linkedItems + branchDirectItems).distinctBy { it.id }
-        } else {
-            menuItemRepository.findByBranchId(branchId).filter { it.isActive }
-        }
-
-        val priceOverrideMap = allBranchLinks.associate { it.menuItemId to it.priceOverride }
-
-        val menuItems = rawMenuItems.map { m ->
-            val effectivePrice = priceOverrideMap[m.id] ?: m.basePrice
-            SyncMenuItemDto(
-                itemId = m.id,
-                branchId = branchId,
-                categoryId = m.categoryId,
-                name = m.name,
-                description = m.description,
-                sku = m.sku,
-                basePrice = effectivePrice.multiply(BigDecimal("100")).toLong(),
-                availability = m.availability,
-                imageUrl = m.imageUrl,
-                sortOrder = m.sortOrder,
-                isActive = m.isActive,
-                allowDecimal = m.allowDecimalQty,
-                unitName = null,
-                specialType = m.specialType
-            )
-        }
-
-        // 4. Buffet Tiers
+        // 3. Buffet Tiers (Evaluated first to discover active buffet-included items)
         val buffetTiers = mutableListOf<SyncBuffetTierDto>()
         if (buffetPromotionTierRepository != null) {
             val rawTiers = buffetPromotionTierRepository.findByBranchIdAndIsActiveTrue(branchId).ifEmpty {
-                val b = branchRepository?.findById(branchId)?.orElse(null)
-                val targetBrandId = b?.brandId
-                if (!targetBrandId.isNullOrBlank()) {
+                if (targetBrandId.isNotBlank()) {
                     buffetPromotionTierRepository.findByBrandIdAndIsActiveTrue(targetBrandId)
                 } else {
                     emptyList()
@@ -742,10 +718,9 @@ class SyncService(
             })
         }
         if (buffetTiers.isEmpty() && buffetPromotionRepository != null) {
-            val b = branchRepository?.findById(branchId)?.orElse(null)
-            val targetBrandId = b?.brandId ?: ""
             val promos = buffetPromotionRepository.findPromotionsForBranch(targetBrandId, branchId, com.sunpos.backend.domain.order.BuffetPromotionStatus.ACTIVE)
             buffetTiers.addAll(promos.map { p ->
+                val eligibleItemIds = buffetPromotionMenuItemRepository?.findMenuItemIdsByPromotionId(p.id) ?: emptyList()
                 SyncBuffetTierDto(
                     tierId = p.id,
                     promotionId = p.id,
@@ -755,9 +730,51 @@ class SyncService(
                     timeLimitMinutes = p.durationMinutes,
                     brandId = p.brandId,
                     branchId = p.branchId,
-                    isActive = p.status == com.sunpos.backend.domain.order.BuffetPromotionStatus.ACTIVE
+                    isActive = p.status == com.sunpos.backend.domain.order.BuffetPromotionStatus.ACTIVE,
+                    eligibleItemIds = eligibleItemIds
                 )
             })
+        }
+
+        // 4. Menu Items (Selling Mode Isolation Guard: Only active À la carte branch items OR active Buffet items)
+        val allBranchLinks = if (menuItemBranchRepository != null) {
+            menuItemBranchRepository.findByBranchId(branchId)
+        } else emptyList()
+
+        val activeBranchItemIds = allBranchLinks.filter { it.isActive }.map { it.menuItemId }.toSet()
+        val activeBuffetItemIds = buffetTiers.filter { it.isActive }.flatMap { it.eligibleItemIds }.toSet()
+        val eligibleSellingItemIds = activeBranchItemIds + activeBuffetItemIds
+
+        val rawMenuItems: List<MenuItem> = if (eligibleSellingItemIds.isNotEmpty()) {
+            val allItems = menuItemRepository.findAll()
+            val branchDirectItems = allItems.filter { it.branchId == branchId && it.isActive && it.availability != "DISABLED" }
+            val linkedOrBuffetItems = allItems.filter { eligibleSellingItemIds.contains(it.id) && it.isActive && it.availability != "DISABLED" }
+            (linkedOrBuffetItems + branchDirectItems).distinctBy { it.id }
+        } else {
+            // Fallback for legacy branch-direct menu items without explicit branch links
+            menuItemRepository.findByBranchId(branchId).filter { it.isActive && it.availability != "DISABLED" }
+        }
+
+        val priceOverrideMap = allBranchLinks.associate { it.menuItemId to it.priceOverride }
+
+        val menuItems = rawMenuItems.map { m ->
+            val effectivePrice = priceOverrideMap[m.id] ?: m.basePrice
+            SyncMenuItemDto(
+                itemId = m.id,
+                branchId = branchId,
+                categoryId = m.categoryId,
+                name = m.name,
+                description = m.description,
+                sku = m.sku,
+                basePrice = effectivePrice.multiply(BigDecimal("100")).toLong(),
+                availability = m.availability,
+                imageUrl = m.imageUrl,
+                sortOrder = m.sortOrder,
+                isActive = m.isActive,
+                allowDecimal = m.allowDecimalQty,
+                unitName = null,
+                specialType = m.specialType
+            )
         }
 
         // 5. Zones
