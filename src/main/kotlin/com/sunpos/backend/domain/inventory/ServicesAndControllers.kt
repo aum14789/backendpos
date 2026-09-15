@@ -164,6 +164,25 @@ class InventoryService(
     fun listMovements(warehouseId: String): List<StockMovement> = movementRepository.findByWarehouseId(warehouseId)
 
     @Transactional
+    fun assignItemToWarehouse(warehouseId: String, inventoryItemId: String): InventoryStock {
+        val stockOpt = stockRepository.findByWarehouseIdAndInventoryItemId(warehouseId, inventoryItemId)
+        if (stockOpt.isPresent) {
+            return stockOpt.get()
+        }
+        val item = itemRepository.findById(inventoryItemId).orElseThrow {
+            IllegalArgumentException("Inventory item not found: $inventoryItemId")
+        }
+        val stock = InventoryStock(
+            warehouseId = warehouseId,
+            inventoryItemId = inventoryItemId,
+            quantity = BigDecimal.ZERO,
+            weightedAverageCost = item.standardCost ?: BigDecimal.ZERO,
+            isAutoProvisioned = false
+        )
+        return stockRepository.save(stock)
+    }
+
+    @Transactional
     fun processPurchaseReceive(dto: PurchaseReceiveDto): StockMovement {
         val qty = dto.quantity.setScale(SCALE, ROUNDING)
         val uCost = dto.unitCost.setScale(SCALE, ROUNDING)
@@ -524,9 +543,20 @@ class InventoryController(
         return ApiResponse.success(inventoryService.recordStockCountAndAdjust(dto), "Stock count recorded and inventory adjusted successfully")
     }
 
+    @PostMapping("/stocks/assign")
+    @PreAuthorize("hasAuthority('STOCK_ADJUST') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('INVENTORY_ITEM_MANAGE')")
+    fun assignItemToWarehouse(@RequestBody dto: AssignStockDto): ApiResponse<InventoryStock> {
+        return ApiResponse.success(inventoryService.assignItemToWarehouse(dto.warehouseId, dto.inventoryItemId), "Item assigned to warehouse successfully")
+    }
+
     @PostMapping("/waste")
     @PreAuthorize("hasAuthority('STOCK_ADJUST') or hasAuthority('ROLE_SUPER_ADMIN')")
     fun recordWaste(@RequestBody dto: StockWasteCreateDto): ApiResponse<StockWaste> {
         return ApiResponse.success(inventoryService.recordWaste(dto), "Stock waste recorded successfully")
     }
 }
+
+data class AssignStockDto(
+    val warehouseId: String = "",
+    val inventoryItemId: String = ""
+)
