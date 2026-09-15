@@ -106,29 +106,37 @@ class BusinessDayService(
         return businessDayRepository.save(day)
     }
 
-    fun listBusinessDays(branchId: String): List<BusinessDay> {
-        return businessDayRepository.findByBranchIdOrderByBusinessDateDesc(branchId)
+    fun listBusinessDays(branchId: String?): List<BusinessDay> {
+        return if (branchId.isNullOrBlank() || branchId.trim().lowercase() == "all") {
+            businessDayRepository.findAll().sortedByDescending { it.businessDate }
+        } else {
+            businessDayRepository.findByBranchIdOrderByBusinessDateDesc(branchId.trim())
+        }
     }
 }
 
 @RestController
-@RequestMapping("/api/v1/business-day")
+@RequestMapping("/api/v1/business-day", "/api/v1/business-days")
 class BusinessDayController(
     private val businessDayService: BusinessDayService
 ) {
     @GetMapping("/current")
-    fun getCurrentBusinessDay(@RequestParam branchId: String): ApiResponse<BusinessDay> {
-        return ApiResponse.success(businessDayService.getOrCreateOpenBusinessDay(branchId))
+    fun getCurrentBusinessDay(@RequestParam(required = false) branchId: String?): ApiResponse<BusinessDay?> {
+        if (branchId.isNullOrBlank()) {
+            return ApiResponse.success(null)
+        }
+        return ApiResponse.success(businessDayService.getOrCreateOpenBusinessDay(branchId.trim()))
     }
 
     @PostMapping("/close-eod")
     @PreAuthorize("hasAuthority('BUSINESS_DAY_CLOSE') or hasAuthority('ROLE_SUPER_ADMIN')")
     fun closeEod(@RequestBody dto: CloseEodDto): ApiResponse<BusinessDay> {
-        return ApiResponse.success(businessDayService.closeBusinessDayEod(dto.branchId, dto.closedBy), "Business Day EOD closed successfully")
+        require(dto.branchId.isNotBlank()) { "branchId is required for EOD close" }
+        return ApiResponse.success(businessDayService.closeBusinessDayEod(dto.branchId.trim(), dto.closedBy), "Business Day EOD closed successfully")
     }
 
     @GetMapping
-    fun listBusinessDays(@RequestParam branchId: String): ApiResponse<List<BusinessDay>> {
+    fun listBusinessDays(@RequestParam(required = false) branchId: String?): ApiResponse<List<BusinessDay>> {
         return ApiResponse.success(businessDayService.listBusinessDays(branchId))
     }
 }
