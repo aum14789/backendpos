@@ -11,6 +11,7 @@ enum class PaymentMethod {
     PROMPTPAY,
     EWALLET,
     VOUCHER,
+    MARKETING,
     OTHER
 }
 

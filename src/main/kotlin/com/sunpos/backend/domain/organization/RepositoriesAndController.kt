@@ -83,7 +83,8 @@ class OrganizationController(
             name = dto.name,
             code = dto.code,
             logoUrl = dto.logoUrl,
-            description = dto.description
+            description = dto.description,
+            allowCashPayment = dto.allowCashPayment
         )
         return ApiResponse.success(brandRepository.save(brand), "Brand created successfully")
     }
@@ -95,6 +96,7 @@ class OrganizationController(
         brand.name = dto.name
         brand.logoUrl = dto.logoUrl
         brand.description = dto.description
+        brand.allowCashPayment = dto.allowCashPayment
         brand.updatedAt = Instant.now()
         return ApiResponse.success(brandRepository.save(brand), "Brand updated successfully")
     }
@@ -131,6 +133,10 @@ class OrganizationController(
             throw IllegalArgumentException("Branch code '${dto.code}' already exists")
         }
 
+        val resolvedAllowCash = dto.allowCashPayment ?: if (!dto.brandId.isNullOrBlank()) {
+            brandRepository.findById(dto.brandId).map { it.allowCashPayment }.orElse(true)
+        } else true
+
         val branch = Branch(
             companyId = dto.companyId,
             brandId = dto.brandId,
@@ -147,6 +153,9 @@ class OrganizationController(
             dynDnsHost = dto.dynDnsHost,
             allowedIpSubnets = dto.allowedIpSubnets,
             activationCode = dto.activationCode,
+            isTestBranch = dto.isTestBranch,
+            status = dto.status,
+            allowCashPayment = resolvedAllowCash,
             isActive = dto.isActive
         )
         val saved = branchRepository.save(branch)
@@ -193,6 +202,13 @@ class OrganizationController(
         branch.ipAddress = dto.ipAddress
         branch.dynDnsHost = dto.dynDnsHost
         branch.allowedIpSubnets = dto.allowedIpSubnets
+        branch.isTestBranch = dto.isTestBranch
+        if (dto.status.isNotBlank()) {
+            branch.status = dto.status
+        }
+        if (dto.allowCashPayment != null) {
+            branch.allowCashPayment = dto.allowCashPayment
+        }
         if (!dto.activationCode.isNullOrBlank()) {
             branch.activationCode = dto.activationCode
             val code = dto.activationCode.trim()

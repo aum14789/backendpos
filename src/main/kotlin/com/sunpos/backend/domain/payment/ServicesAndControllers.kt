@@ -5,6 +5,7 @@ import com.sunpos.backend.common.JdbcRepository
 import org.springframework.jdbc.core.JdbcTemplate
 import com.sunpos.backend.domain.order.OrderRepository
 import com.sunpos.backend.domain.order.OrderStatus
+import com.sunpos.backend.domain.order.FinancialStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Repository
 import org.springframework.stereotype.Service
@@ -33,7 +34,9 @@ class PaymentService(
     private val paymentRepository: PaymentTransactionRepository,
     private val refundRepository: RefundTransactionRepository,
     private val orderRepository: OrderRepository,
-    private val crmService: CrmService
+    private val crmService: CrmService,
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private val branchRepository: com.sunpos.backend.domain.organization.BranchRepository? = null
 ) {
     companion object {
         const val SCALE = 4
@@ -42,6 +45,14 @@ class PaymentService(
 
     @Transactional
     fun processPayment(req: PaymentRequestDto): PaymentResponseDto {
+        // Cashless branch validation
+        if (req.paymentMethod == PaymentMethod.CASH) {
+            val branch = branchRepository?.findById(req.branchId)?.orElse(null)
+            if (branch != null && !branch.allowCashPayment) {
+                throw IllegalArgumentException("Cash payments are disabled for this branch")
+            }
+        }
+
         // Idempotency check
         if (!req.idempotencyKey.isNullOrBlank()) {
             val existingOpt = paymentRepository.findByIdempotencyKey(req.idempotencyKey)
@@ -97,9 +108,10 @@ class PaymentService(
         val savedPayment = paymentRepository.save(payment)
 
         val totalPaid = totalPaidSoFar.add(amount)
-        // If total payments >= order total, transition order to COMPLETED
+        // If total payments >= order total, transition order to COMPLETED and PAID
         if (totalPaid >= order.totalAmount && order.status != OrderStatus.COMPLETED) {
             order.status = OrderStatus.COMPLETED
+            order.financialStatus = FinancialStatus.PAID
             orderRepository.save(order)
         }
 

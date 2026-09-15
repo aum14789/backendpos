@@ -53,7 +53,9 @@ class InventoryEodConsumptionService(
     private val buffetSessionRepository: BuffetSessionRepository,
     private val buffetPackageRecipeRepository: BuffetPackageRecipeRepository,
     private val inventoryConfigService: InventoryConfigService,
-    private val warehouseRepository: WarehouseRepository? = null
+    private val warehouseRepository: WarehouseRepository? = null,
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private val branchRepository: com.sunpos.backend.domain.organization.BranchRepository? = null
 ) {
     companion object {
         const val SCALE = 4
@@ -108,6 +110,14 @@ class InventoryEodConsumptionService(
 
     @Transactional
     fun consumeBusinessDaySales(businessDayId: String, branchId: String, warehouseId: String, userId: String? = null) {
+        // Bypass sales recipe deduction if branch is in PRE_OPENING state (unless it's a dedicated test branch)
+        val branch = branchRepository?.findById(branchId)?.orElse(null)
+        if (branch != null && branch.status == "PRE_OPENING" && !branch.isTestBranch) {
+            org.slf4j.LoggerFactory.getLogger(InventoryEodConsumptionService::class.java)
+                .info("Skipping recipe stock deduction: Branch [{}] is in PRE_OPENING", branchId)
+            return
+        }
+
         // Check inventory config — if REALTIME mode, skip EOD consumption entirely
         val invConfig = inventoryConfigService.getConfigForBranch(branchId)
         if (invConfig.stockDeductionMode == StockDeductionMode.REALTIME) {

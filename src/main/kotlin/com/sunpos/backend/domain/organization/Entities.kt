@@ -22,6 +22,7 @@ class Brand(
     var code: String = "",
     var logoUrl: String? = null,
     var description: String? = null,
+    var allowCashPayment: Boolean = true,
     var isActive: Boolean = true,
     val createdAt: Instant = Instant.now(),
     var createdBy: String? = null,
@@ -47,6 +48,10 @@ class Branch(
     var dynDnsHost: String? = null,
     var allowedIpSubnets: List<String> = emptyList(),
     var activationCode: String? = null,
+    var isTestBranch: Boolean = false,
+    var status: String = "PRE_OPENING",
+    var allowCashPayment: Boolean = true,
+    var invoiceSequenceNumber: Long = 0,
     var isActive: Boolean = true,
     val createdAt: Instant = Instant.now(),
     var createdBy: String? = null,
@@ -83,7 +88,8 @@ data class BrandCreateDto(
     val name: String = "",
     val code: String = "",
     val logoUrl: String? = null,
-    val description: String? = null
+    val description: String? = null,
+    val allowCashPayment: Boolean = true
 )
 
 data class BranchCreateDto(
@@ -102,6 +108,9 @@ data class BranchCreateDto(
     val dynDnsHost: String? = null,
     val allowedIpSubnets: List<String> = emptyList(),
     val activationCode: String? = null,
+    val isTestBranch: Boolean = false,
+    val status: String = "PRE_OPENING",
+    val allowCashPayment: Boolean? = null,
     val isActive: Boolean = true
 )
 

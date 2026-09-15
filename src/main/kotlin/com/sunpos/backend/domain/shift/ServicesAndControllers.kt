@@ -30,7 +30,9 @@ class CashMovementRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<CashMo
 @Service
 class ShiftService(
     private val shiftRepository: CashierShiftRepository,
-    private val movementRepository: CashMovementRepository
+    private val movementRepository: CashMovementRepository,
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private val branchRepository: com.sunpos.backend.domain.organization.BranchRepository? = null
 ) {
     companion object {
         const val SCALE = 4
@@ -44,12 +46,19 @@ class ShiftService(
             return existingOpt.get()
         }
 
+        val branch = branchRepository?.findById(dto.branchId)?.orElse(null)
+        val openingCash = if (branch != null && !branch.allowCashPayment) {
+            BigDecimal.ZERO.setScale(SCALE, ROUNDING)
+        } else {
+            dto.openingCash.setScale(SCALE, ROUNDING)
+        }
+
         val shift = CashierShift(
             branchId = dto.branchId,
             deviceId = dto.deviceId,
             userId = dto.userId,
-            openingCash = dto.openingCash.setScale(SCALE, ROUNDING),
-            expectedCash = dto.openingCash.setScale(SCALE, ROUNDING)
+            openingCash = openingCash,
+            expectedCash = openingCash
         )
         return shiftRepository.save(shift)
     }
