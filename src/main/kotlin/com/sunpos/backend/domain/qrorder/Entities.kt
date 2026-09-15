@@ -115,7 +115,8 @@ data class UpdateQrOrderStatusDto(
 
 class QrOrderMenuItemSetting(
     val id: String = UUID.randomUUID().toString(),
-    var branchId: String = "",
+    var branchId: String? = null,
+    var brandId: String? = null,
     var menuItemId: String = "",
     var isEnabled: Boolean = true,
     val createdAt: Instant = Instant.now(),
@@ -144,9 +145,10 @@ data class QrMenuProductDto(
     val price: BigDecimal,
     val imageUrl: String? = null,
     val isAvailable: Boolean = true,
+    val isBuffetIncluded: Boolean = false,
+    val buffetAdditionalPrice: BigDecimal? = null,
     val modifierGroups: List<com.sunpos.backend.domain.catalog.ModifierGroupResponseDto> = emptyList()
 )
-
 
 data class QrMenuCategoryDto(
     val id: String,
@@ -160,3 +162,49 @@ data class QrMenuResponseDto(
     val branchName: String,
     val categories: List<QrMenuCategoryDto>
 )
+
+data class BrandQrCategoryDto(
+    val id: String,
+    val name: String,
+    val prefix: String? = null,
+    val sortOrder: Int = 0,
+    val qrSortOrder: Int = 0,
+    val isActive: Boolean = true,
+    val itemCount: Int = 0
+)
+
+data class BrandQrItemDto(
+    val id: String,
+    val categoryId: String,
+    val name: String,
+    val sku: String? = null,
+    val basePrice: BigDecimal = BigDecimal.ZERO,
+    val imageUrl: String? = null,
+    val isEnabled: Boolean = true,
+    val effectiveDate: java.time.LocalDate? = null,
+    val expiryDate: java.time.LocalDate? = null,
+    val isDateActive: Boolean = true,
+    val dateStatusMessage: String? = null
+)
+
+data class BrandQrMenuCatalogDto(
+    val brandId: String,
+    val categories: List<BrandQrCategoryDto>,
+    val items: List<BrandQrItemDto>
+)
+
+data class UpdateBrandQrCategorySortItem(
+    val categoryId: String,
+    val qrSortOrder: Int
+)
+
+data class UpdateBrandQrItemSetting(
+    val menuItemId: String,
+    val isEnabled: Boolean
+)
+
+data class UpdateBrandQrMenuCatalogRequest(
+    val categorySortOrders: List<UpdateBrandQrCategorySortItem> = emptyList(),
+    val itemSettings: List<UpdateBrandQrItemSetting> = emptyList()
+)
+

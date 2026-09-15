@@ -104,6 +104,7 @@ class CatalogService(
         existing.prefix = updated.prefix?.trim()
         existing.description = updated.description?.trim()
         existing.sortOrder = updated.sortOrder
+        existing.qrSortOrder = updated.qrSortOrder
         existing.isActive = updated.isActive
         if (updated.brandId != null) existing.brandId = updated.brandId
         if (updated.branchId != null) existing.branchId = updated.branchId

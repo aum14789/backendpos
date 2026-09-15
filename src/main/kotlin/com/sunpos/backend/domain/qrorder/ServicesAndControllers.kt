@@ -32,7 +32,10 @@ class QrOrderService(
     private val qrTableSessionService: com.sunpos.backend.domain.table.QrTableSessionService? = null,
     private val menuItemModifierGroupRepository: com.sunpos.backend.domain.catalog.MenuItemModifierGroupRepository? = null,
     private val modifierGroupRepository: com.sunpos.backend.domain.catalog.ModifierGroupRepository? = null,
-    private val modifierRepository: com.sunpos.backend.domain.catalog.ModifierRepository? = null
+    private val modifierRepository: com.sunpos.backend.domain.catalog.ModifierRepository? = null,
+    private val orderRepository: com.sunpos.backend.domain.order.OrderRepository? = null,
+    private val buffetSessionRepository: com.sunpos.backend.domain.order.BuffetSessionRepository? = null,
+    private val buffetPromotionMenuItemRepository: com.sunpos.backend.domain.order.BuffetPromotionMenuItemRepository? = null
 ) {
     private val logger = LoggerFactory.getLogger(QrOrderService::class.java)
 
@@ -317,34 +320,49 @@ class QrOrderService(
         return QrOrderDetailsDto(saved, items)
     }
 
-    fun getBranchMenu(branchId: String): QrMenuResponseDto {
+    fun getBranchMenu(branchId: String, tableNumber: String? = null, token: String? = null): QrMenuResponseDto {
         val branchOpt = branchRepository.findById(branchId)
         // ปิด QR Order ทั้งสาขาชั่วคราว → ลูกค้าเว็บเห็นข้อความงดให้บริการ
         if (branchOpt.isPresent && !branchOpt.get().isQrOrderEnabled) {
             throw IllegalStateException("ขออภัย ระบบสั่งอาหารผ่าน QR งดให้บริการชั่วคราว กรุณาติดต่อพนักงาน")
         }
         val branchName = branchOpt.map { it.name }.orElse("SunPOS Restaurant")
+        val brandId = branchOpt.map { it.brandId }.orElse(null)
 
-        // 1. Fetch categories for this branch (sorted by sortOrder)
+        // 1. Fetch categories for this branch (sorted by qrSortOrder, then sortOrder)
         val branchCategories = menuCategoryRepository.findByBranchIdOrderBySortOrderAsc(branchId)
         val allCategories = if (branchCategories.isNotEmpty()) {
             branchCategories
         } else {
             menuCategoryRepository.findAll().filter { it.branchId == branchId || it.branchId.isNullOrBlank() }
-        }.filter { it.isActive }.sortedBy { it.sortOrder }
+        }.filter { it.isActive }.sortedWith(compareBy({ if (it.qrSortOrder != 0) it.qrSortOrder else it.sortOrder }, { it.sortOrder }))
 
-        // 2. Fetch products for this branch (active and availability == AVAILABLE)
+        // 2. Fetch products for this branch (active, available, and within effective/expiry date range)
+        val today = java.time.LocalDate.now()
         val branchProducts = menuItemRepository.findByBranchId(branchId)
         val allProducts = if (branchProducts.isNotEmpty()) {
             branchProducts
         } else {
             menuItemRepository.findAll().filter { it.branchId == branchId || it.branchId.isBlank() }
-        }.filter { it.isActive && it.availability.equals("AVAILABLE", ignoreCase = true) }
-            .sortedBy { it.sortOrder }
+        }.filter {
+            it.isActive &&
+            it.availability.equals("AVAILABLE", ignoreCase = true) &&
+            (it.effectiveDate == null || !it.effectiveDate!!.isAfter(today)) &&
+            (it.expiryDate == null || !it.expiryDate!!.isBefore(today))
+        }.sortedBy { it.sortOrder }
 
-        val qrEnabledByItemId = qrOrderMenuItemSettingRepository.findByBranchId(branchId)
+        val branchSettings = qrOrderMenuItemSettingRepository.findByBranchId(branchId)
             .associate { it.menuItemId to it.isEnabled }
-        val qrProducts = allProducts.filter { qrEnabledByItemId[it.id] != false }
+        val brandSettings = if (!brandId.isNullOrBlank()) {
+            qrOrderMenuItemSettingRepository.findByBrandId(brandId)
+                .associate { it.menuItemId to it.isEnabled }
+        } else emptyMap()
+
+        val qrProducts = allProducts.filter { prod ->
+            val branchSetting = branchSettings[prod.id]
+            if (branchSetting != null) branchSetting
+            else brandSettings[prod.id] ?: true
+        }
 
         // 3. Resolve branch-specific pricing overrides from ScheduledCatalog if present
         val branchPriceMap: Map<String, BigDecimal> = try {
@@ -357,7 +375,33 @@ class QrOrderService(
             emptyMap()
         }
 
-        // 4. Map products into categories and omit categories without available items
+        // 4. Resolve active buffet session if tableNumber is present
+        var buffetLinkMap: Map<String, com.sunpos.backend.domain.order.BuffetPromotionMenuItem> = emptyMap()
+        var isBuffetActive = false
+        if (!tableNumber.isNullOrBlank() && buffetSessionRepository != null && buffetPromotionMenuItemRepository != null) {
+            try {
+                val activeSessions = buffetSessionRepository.findByBranchIdAndStatus(branchId, com.sunpos.backend.domain.order.BuffetSessionStatus.ACTIVE)
+                val activeTableSession = qrTableSessionService?.getActiveSession(branchId, tableNumber.trim())?.orElse(null)
+                val activeTableOrders = if (activeTableSession != null) {
+                    orderRepository?.findByTableSessionId(activeTableSession.id) ?: emptyList()
+                } else {
+                    orderRepository?.findByBranchId(branchId)?.filter { it.status == com.sunpos.backend.domain.order.OrderStatus.OPEN } ?: emptyList()
+                }
+                val activeOrderIds = activeTableOrders.map { it.id }.toSet()
+                val session = activeSessions.firstOrNull { it.orderId in activeOrderIds }
+                if (session != null) {
+                    val links = buffetPromotionMenuItemRepository.findByPromotionId(session.buffetTierId)
+                    if (links.isNotEmpty()) {
+                        buffetLinkMap = links.associateBy { it.menuItemId }
+                        isBuffetActive = true
+                    }
+                }
+            } catch (e: Exception) {
+                logger.debug("Buffet session lookup skipped: {}", e.message)
+            }
+        }
+
+        // 5. Map products into categories and omit categories without available items
         val categoryDtos = if (allCategories.isNotEmpty() && qrProducts.isNotEmpty()) {
             allCategories.mapNotNull { cat ->
                 val prods = qrProducts.filter { it.categoryId == cat.id }
@@ -367,9 +411,17 @@ class QrOrderService(
                     QrMenuCategoryDto(
                         id = cat.id,
                         name = cat.name,
-                        sortOrder = cat.sortOrder,
+                        sortOrder = if (cat.qrSortOrder != 0) cat.qrSortOrder else cat.sortOrder,
                         products = prods.map { p ->
-                            val effectivePrice = branchPriceMap[p.id] ?: p.basePrice
+                            val isBuffetItem = isBuffetActive && buffetLinkMap.containsKey(p.id)
+                            val effectivePrice = if (isBuffetItem) {
+                                val link = buffetLinkMap[p.id]!!
+                                if (link.isFree) BigDecimal.ZERO else link.additionalPrice
+                            } else {
+                                branchPriceMap[p.id] ?: p.basePrice
+                            }
+                            val buffetAdditional = if (isBuffetItem) buffetLinkMap[p.id]?.additionalPrice else null
+
                             val groupDtos = if (menuItemModifierGroupRepository != null && modifierGroupRepository != null && modifierRepository != null) {
                                 val links = menuItemModifierGroupRepository.findByIdMenuItemId(p.id)
                                 links.mapNotNull { link ->
@@ -398,6 +450,8 @@ class QrOrderService(
                                 price = effectivePrice,
                                 imageUrl = p.imageUrl,
                                 isAvailable = true,
+                                isBuffetIncluded = isBuffetItem,
+                                buffetAdditionalPrice = buffetAdditional,
                                 modifierGroups = groupDtos
                             )
                         }
@@ -418,6 +472,108 @@ class QrOrderService(
             branchName = branchName,
             categories = categoryDtos
         )
+    }
+
+    fun getBrandQrMenuCatalog(brandId: String): BrandQrMenuCatalogDto {
+        val today = java.time.LocalDate.now()
+        val allCategories = menuCategoryRepository.findAll()
+            .filter { it.brandId == brandId || it.brandId.isNullOrBlank() }
+            .filter { it.isActive }
+            .sortedWith(compareBy({ if (it.qrSortOrder != 0) it.qrSortOrder else it.sortOrder }, { it.sortOrder }))
+
+        val allItems = menuItemRepository.findAll()
+            .filter { (it.brandId == brandId || it.brandId.isNullOrBlank()) && it.isActive }
+            .sortedBy { it.sortOrder }
+
+        val settings = qrOrderMenuItemSettingRepository.findByBrandId(brandId)
+            .associate { it.menuItemId to it.isEnabled }
+
+        val categoryItemCounts = allItems.groupBy { it.categoryId }.mapValues { it.value.size }
+
+        val categoryDtos = allCategories.map { cat ->
+            BrandQrCategoryDto(
+                id = cat.id,
+                name = cat.name,
+                prefix = cat.prefix,
+                sortOrder = cat.sortOrder,
+                qrSortOrder = cat.qrSortOrder,
+                isActive = cat.isActive,
+                itemCount = categoryItemCounts[cat.id] ?: 0
+            )
+        }
+
+        val itemDtos = allItems.map { item ->
+            val isFuture = item.effectiveDate != null && item.effectiveDate!!.isAfter(today)
+            val isExpired = item.expiryDate != null && item.expiryDate!!.isBefore(today)
+            val isDateActive = !isFuture && !isExpired
+            val dateStatus = when {
+                isFuture -> "ยังไม่ถึงกำหนด (เริ่ม ${item.effectiveDate})"
+                isExpired -> "หมดอายุแล้ว (${item.expiryDate})"
+                else -> "พร้อมให้บริการ"
+            }
+            BrandQrItemDto(
+                id = item.id,
+                categoryId = item.categoryId,
+                name = item.name,
+                sku = item.sku,
+                basePrice = item.basePrice,
+                imageUrl = item.imageUrl,
+                isEnabled = settings[item.id] ?: true,
+                effectiveDate = item.effectiveDate,
+                expiryDate = item.expiryDate,
+                isDateActive = isDateActive,
+                dateStatusMessage = dateStatus
+            )
+        }
+
+        return BrandQrMenuCatalogDto(
+            brandId = brandId,
+            categories = categoryDtos,
+            items = itemDtos
+        )
+    }
+
+    @Transactional
+    fun updateBrandQrMenuCatalog(brandId: String, request: UpdateBrandQrMenuCatalogRequest): BrandQrMenuCatalogDto {
+        // 1. Update category QR sort orders
+        if (request.categorySortOrders.isNotEmpty()) {
+            val catMap = menuCategoryRepository.findAll().associateBy { it.id }
+            for (sortItem in request.categorySortOrders) {
+                val cat = catMap[sortItem.categoryId]
+                if (cat != null && cat.qrSortOrder != sortItem.qrSortOrder) {
+                    cat.qrSortOrder = sortItem.qrSortOrder
+                    menuCategoryRepository.save(cat)
+                }
+            }
+        }
+
+        // 2. Update item settings
+        if (request.itemSettings.isNotEmpty()) {
+            val existingSettings = qrOrderMenuItemSettingRepository.findByBrandId(brandId)
+                .associateBy { it.menuItemId }
+            val now = Instant.now()
+            for (itemReq in request.itemSettings) {
+                val setting = existingSettings[itemReq.menuItemId]
+                if (setting != null) {
+                    if (setting.isEnabled != itemReq.isEnabled) {
+                        setting.isEnabled = itemReq.isEnabled
+                        setting.updatedAt = now
+                        qrOrderMenuItemSettingRepository.save(setting)
+                    }
+                } else {
+                    val newSetting = QrOrderMenuItemSetting(
+                        brandId = brandId,
+                        menuItemId = itemReq.menuItemId,
+                        isEnabled = itemReq.isEnabled,
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                    qrOrderMenuItemSettingRepository.save(newSetting)
+                }
+            }
+        }
+
+        return getBrandQrMenuCatalog(brandId)
     }
 
     /** List all sellable items, including QR-hidden items, for the branch manager screen. */
@@ -524,9 +680,27 @@ class QrOrderController(
         return ApiResponse.success(qrOrderService.updateOrderStatus(orderId, dto.status), "Status updated")
     }
 
+    @GetMapping("/brand/{brandId}/catalog")
+    @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_BRANCH_MANAGER') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun getBrandQrMenuCatalog(@PathVariable brandId: String): ApiResponse<BrandQrMenuCatalogDto> {
+        return ApiResponse.success(qrOrderService.getBrandQrMenuCatalog(brandId))
+    }
+
+    @PutMapping("/brand/{brandId}/catalog")
+    @PreAuthorize("hasAuthority('MENU_MANAGE') or hasAuthority('ROLE_BRANCH_MANAGER') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun updateBrandQrMenuCatalog(
+        @PathVariable brandId: String,
+        @RequestBody request: UpdateBrandQrMenuCatalogRequest
+    ): ApiResponse<BrandQrMenuCatalogDto> {
+        return ApiResponse.success(qrOrderService.updateBrandQrMenuCatalog(brandId, request), "บันทึกการตั้งค่าเมนู QR สำเร็จ")
+    }
+
     @GetMapping("/menu/{branchId}")
-    fun getBranchMenu(@PathVariable branchId: String): ApiResponse<QrMenuResponseDto> {
-        return ApiResponse.success(qrOrderService.getBranchMenu(branchId))
+    fun getBranchMenu(
+        @PathVariable branchId: String,
+        @RequestParam(required = false) tableNumber: String?
+    ): ApiResponse<QrMenuResponseDto> {
+        return ApiResponse.success(qrOrderService.getBranchMenu(branchId, tableNumber))
     }
 
     @GetMapping("/branch/{branchId}/menu-items")
@@ -612,8 +786,14 @@ class PublicOrderController(
     }
 
     @GetMapping("/menu/{branchId}")
-    fun getPublicMenu(@PathVariable branchId: String): QrMenuResponseDto {
-        return qrOrderService.getBranchMenu(branchId)
+    fun getPublicMenu(
+        @PathVariable branchId: String,
+        @RequestParam(required = false) tableNumber: String?,
+        @RequestParam(required = false) token: String?,
+        @RequestHeader(value = "X-Session-Token", required = false) headerToken: String?
+    ): QrMenuResponseDto {
+        val effectiveToken = token?.trim()?.ifBlank { null } ?: headerToken?.trim()?.ifBlank { null }
+        return qrOrderService.getBranchMenu(branchId, tableNumber, effectiveToken)
     }
 
     /** ให้ web QR ตรวจได้ว่าสาขานี้เปิดรับออเดอร์ผ่าน QR หรือไม่ */

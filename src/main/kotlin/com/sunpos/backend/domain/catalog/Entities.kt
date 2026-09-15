@@ -13,6 +13,7 @@ class MenuCategory(
     var prefix: String? = null,
     var description: String? = null,
     var sortOrder: Int = 0,
+    var qrSortOrder: Int = 0,
     var isActive: Boolean = true,
     val createdAt: Instant = Instant.now()
 )

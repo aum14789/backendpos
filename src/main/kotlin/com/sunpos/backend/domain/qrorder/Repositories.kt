@@ -62,4 +62,10 @@ class QrOrderMenuItemSettingRepository(jdbcTemplate: JdbcTemplate) :
 
     fun findByBranchIdAndMenuItemId(branchId: String, menuItemId: String): java.util.Optional<QrOrderMenuItemSetting> =
         findByBranchId(branchId).firstOrNull { it.menuItemId == menuItemId }.let { java.util.Optional.ofNullable(it) }
+
+    fun findByBrandId(brandId: String): List<QrOrderMenuItemSetting> =
+        findByField("brandId", brandId)
+
+    fun findByBrandIdAndMenuItemId(brandId: String, menuItemId: String): java.util.Optional<QrOrderMenuItemSetting> =
+        findByBrandId(brandId).firstOrNull { it.menuItemId == menuItemId }.let { java.util.Optional.ofNullable(it) }
 }
