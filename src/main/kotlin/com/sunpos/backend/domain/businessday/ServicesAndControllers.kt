@@ -73,8 +73,18 @@ class BusinessDayService(
         day.status = BusinessDayStatus.PROCESSING
         businessDayRepository.save(day)
 
-        // Trigger stock consumption for all warehouses in this branch
+        // Trigger stock consumption strictly for primary Main Storage Warehouses (exclude Waste & Destroy)
         val warehouses = warehouseRepository.findByBranchId(branchId)
+            .filter { wh ->
+                wh.isActive && !wh.isCentral &&
+                !wh.name.contains("เวส", ignoreCase = true) &&
+                !wh.name.contains("waste", ignoreCase = true) &&
+                !wh.name.contains("ทำลาย", ignoreCase = true) &&
+                !wh.name.contains("เดสทรอย", ignoreCase = true) &&
+                !wh.name.contains("destroy", ignoreCase = true) &&
+                !wh.code.contains("WASTE", ignoreCase = true) &&
+                !wh.code.contains("DESTROY", ignoreCase = true)
+            }
         for (wh in warehouses) {
             inventoryEodConsumptionService.consumeBusinessDaySales(day.id, branchId, wh.id, closedBy)
         }

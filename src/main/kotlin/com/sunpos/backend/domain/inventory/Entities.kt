@@ -59,6 +59,8 @@ class InventoryItem(
     var countFrequency: String = "DAILY",
     var countFrequencies: List<String> = listOf("DAILY"),
     var brandId: String? = null,
+    var standardCost: BigDecimal = BigDecimal.ZERO,
+    var itemType: String = "RAW", // RAW, SEMI
     var isActive: Boolean = true,
     val createdAt: Instant = Instant.now()
 )
@@ -82,6 +84,7 @@ class InventoryStock(
     var inventoryItemId: String = "",
     var quantity: BigDecimal = BigDecimal.ZERO,
     var weightedAverageCost: BigDecimal = BigDecimal.ZERO,
+    var isAutoProvisioned: Boolean = false,
     var updatedAt: Instant = Instant.now()
 )
 

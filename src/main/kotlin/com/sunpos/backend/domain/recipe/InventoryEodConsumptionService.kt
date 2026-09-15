@@ -52,7 +52,8 @@ class InventoryEodConsumptionService(
     private val snapshotRepository: OrderRecipeSnapshotRepository,
     private val buffetSessionRepository: BuffetSessionRepository,
     private val buffetPackageRecipeRepository: BuffetPackageRecipeRepository,
-    private val inventoryConfigService: InventoryConfigService
+    private val inventoryConfigService: InventoryConfigService,
+    private val warehouseRepository: WarehouseRepository? = null
 ) {
     companion object {
         const val SCALE = 4
@@ -111,6 +112,17 @@ class InventoryEodConsumptionService(
         val invConfig = inventoryConfigService.getConfigForBranch(branchId)
         if (invConfig.stockDeductionMode == StockDeductionMode.REALTIME) {
             return
+        }
+
+        // Bypass specialized warehouses (Waste & Destroy) if warehouseRepository is available
+        val wh = warehouseRepository?.findById(warehouseId)?.orElse(null)
+        if (wh != null) {
+            val name = wh.name.lowercase()
+            val code = wh.code.lowercase()
+            if (name.contains("เวส") || name.contains("waste") || name.contains("ทำลาย") || name.contains("destroy") ||
+                code.contains("waste") || code.contains("destroy")) {
+                return
+            }
         }
 
         val existingBatches = batchRepository.findByBusinessDayIdAndWarehouseId(businessDayId, warehouseId)
@@ -292,26 +304,42 @@ class InventoryEodConsumptionService(
                 }
             }
 
-            // 3. Deduct Inventory Stock (Pessimistic Lock & Correct Item Unit)
+            // 3. Deduct Inventory Stock (Auto-Provisioning, Pessimistic Lock & Correct Item Unit)
             for ((inventoryItemId, totalQtyNeeded) in globalIngredientConsumptions) {
                 val stockOpt = stockRepository.findByWarehouseIdAndInventoryItemId(warehouseId, inventoryItemId)
-                if (!stockOpt.isPresent) {
-                    // Item not stocked in this warehouse (e.g. Bar warehouse vs Kitchen warehouse); skip deduction in this warehouse
-                    continue
+                val currentStock = if (stockOpt.isPresent) {
+                    stockOpt.get()
+                } else {
+                    // Auto-Provisioning: Raw or Semi Item not yet recorded in this warehouse
+                    val rawItem = itemRepository.findById(inventoryItemId).orElse(null)
+                    val initialCost = rawItem?.standardCost ?: BigDecimal.ZERO
+
+                    val newStock = InventoryStock(
+                        warehouseId = warehouseId,
+                        inventoryItemId = inventoryItemId,
+                        quantity = BigDecimal.ZERO,
+                        weightedAverageCost = initialCost,
+                        isAutoProvisioned = true
+                    )
+                    stockRepository.save(newStock)
                 }
-                val currentStock = stockOpt.get()
 
                 if (!invConfig.allowNegativeStock && currentStock.quantity.compareTo(totalQtyNeeded) < 0) {
                     throw IllegalArgumentException("Insufficient stock for item $inventoryItemId. Available: ${currentStock.quantity}, Required: $totalQtyNeeded")
                 }
 
-                // Update stock balance
+                // Update stock balance (allows negative)
                 currentStock.quantity = currentStock.quantity.subtract(totalQtyNeeded).setScale(SCALE, ROUNDING)
                 stockRepository.save(currentStock)
 
                 // Resolve correct unit name from InventoryItem entity
                 val rawItem = itemRepository.findById(inventoryItemId).orElse(null)
                 val unitName = rawItem?.unit ?: "unit"
+                val movementUnitCost = if (currentStock.weightedAverageCost.compareTo(BigDecimal.ZERO) > 0) {
+                    currentStock.weightedAverageCost
+                } else {
+                    rawItem?.standardCost ?: BigDecimal.ZERO
+                }
 
                 // Create Stock Movement (SALE_CONSUMPTION)
                 val movement = StockMovement(
@@ -319,8 +347,8 @@ class InventoryEodConsumptionService(
                     inventoryItemId = inventoryItemId,
                     quantity = totalQtyNeeded.negate(),
                     unit = unitName,
-                    unitCost = currentStock.weightedAverageCost,
-                    totalCost = totalQtyNeeded.multiply(currentStock.weightedAverageCost).setScale(SCALE, ROUNDING),
+                    unitCost = movementUnitCost,
+                    totalCost = totalQtyNeeded.multiply(movementUnitCost).setScale(SCALE, ROUNDING),
                     movementType = MovementType.SALE_CONSUMPTION,
                     referenceType = "INVENTORY_CLOSE_BATCH",
                     referenceId = batch.id,
