@@ -26,7 +26,10 @@ class QrTableSessionController(
             tableId = table.id,
             tableNumber = table.nameNumber,
             openedBy = request?.openedBy,
-            expiresAt = request?.expiresAt
+            expiresAt = request?.expiresAt,
+            orderType = request?.orderType,
+            buffetTierId = request?.buffetTierId,
+            buffetTierName = request?.buffetTierName
         )
 
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -50,9 +53,15 @@ class QrTableSessionController(
 
     @PostMapping("/{tableId}/qr-session/reprint")
     fun reprintQrSession(
-        @PathVariable tableId: String
+        @PathVariable tableId: String,
+        @RequestBody(required = false) request: OpenQrSessionRequest? = null
     ): ResponseEntity<ApiResponse<QrSessionResponseDto>> {
-        val session = qrTableSessionService.regenerateToken(tableId)
+        val session = qrTableSessionService.regenerateToken(
+            sessionIdOrTableId = tableId,
+            orderType = request?.orderType,
+            buffetTierId = request?.buffetTierId,
+            buffetTierName = request?.buffetTierName
+        )
         return ResponseEntity.ok(
             ApiResponse.success(qrTableSessionService.toResponseDto(session), "QR session token regenerated successfully")
         )

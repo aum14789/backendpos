@@ -22,6 +22,7 @@ import java.time.format.DateTimeFormatter
 class OrderRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<Order>(jdbcTemplate, "orders", Order::class.java) {
     fun findByBranchId(branchId: String): List<Order> = findByField("branchId", branchId)
     fun findByTableSessionId(tableSessionId: String): List<Order> = findByField("tableSessionId", tableSessionId)
+    fun findByTableId(tableId: String): List<Order> = findByField("tableId", tableId)
     fun findByCustomerIdOrderByCreatedAtDesc(customerId: String): List<Order> =
         findByField("customerId", customerId).sortedByDescending { it.createdAt }
 }

@@ -58,7 +58,10 @@ class QrTableSessionService(
             openedAt = session.openedAt,
             closedAt = session.closedAt,
             openedBy = session.openedBy,
-            expiresAt = session.expiresAt
+            expiresAt = session.expiresAt,
+            orderType = session.orderType,
+            buffetTierId = session.buffetTierId,
+            buffetTierName = session.buffetTierName
         )
     }
 
@@ -68,7 +71,10 @@ class QrTableSessionService(
         tableId: String,
         tableNumber: String,
         openedBy: String? = null,
-        expiresAt: Instant? = null
+        expiresAt: Instant? = null,
+        orderType: String? = "DINE_IN",
+        buffetTierId: String? = null,
+        buffetTierName: String? = null
     ): QrTableSession {
         require(branchId.isNotBlank()) { "branchId cannot be blank" }
         require(tableId.isNotBlank()) { "tableId cannot be blank" }
@@ -98,7 +104,10 @@ class QrTableSessionService(
             status = QrTableSessionStatus.ACTIVE.name,
             openedAt = now,
             openedBy = openedBy?.trim()?.ifBlank { null },
-            expiresAt = expiresAt
+            expiresAt = expiresAt,
+            orderType = orderType?.trim()?.ifBlank { "DINE_IN" } ?: "DINE_IN",
+            buffetTierId = buffetTierId?.trim()?.ifBlank { null },
+            buffetTierName = buffetTierName?.trim()?.ifBlank { null }
         )
 
         val saved = qrTableSessionRepository.save(newSession)
@@ -168,7 +177,12 @@ class QrTableSessionService(
     }
 
     @Transactional
-    fun regenerateToken(sessionIdOrTableId: String): QrTableSession {
+    fun regenerateToken(
+        sessionIdOrTableId: String,
+        orderType: String? = null,
+        buffetTierId: String? = null,
+        buffetTierName: String? = null
+    ): QrTableSession {
         require(sessionIdOrTableId.isNotBlank()) { "Identifier cannot be blank" }
 
         // Try lookup by sessionId first, then by tableId active session
@@ -187,6 +201,9 @@ class QrTableSessionService(
 
         val oldToken = session.sessionToken
         session.sessionToken = generateSecureToken(16)
+        if (!orderType.isNullOrBlank()) session.orderType = orderType
+        if (!buffetTierId.isNullOrBlank()) session.buffetTierId = buffetTierId
+        if (!buffetTierName.isNullOrBlank()) session.buffetTierName = buffetTierName
         val saved = qrTableSessionRepository.save(session)
 
         logger.info("Regenerated QR session token for session {}: oldToken={}... newToken={}",

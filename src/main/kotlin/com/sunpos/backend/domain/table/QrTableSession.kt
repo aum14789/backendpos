@@ -18,14 +18,20 @@ data class QrTableSession(
     val openedAt: Instant = Instant.now(),
     var closedAt: Instant? = null,
     var openedBy: String? = null,
-    var expiresAt: Instant? = null
+    var expiresAt: Instant? = null,
+    var orderType: String = "DINE_IN",
+    var buffetTierId: String? = null,
+    var buffetTierName: String? = null
 )
 
 // ── DTOs ──
 
 data class OpenQrSessionRequest(
     val openedBy: String? = null,
-    val expiresAt: Instant? = null
+    val expiresAt: Instant? = null,
+    val orderType: String? = "DINE_IN",
+    val buffetTierId: String? = null,
+    val buffetTierName: String? = null
 )
 
 data class QrSessionResponseDto(
@@ -39,5 +45,8 @@ data class QrSessionResponseDto(
     val openedAt: Instant,
     val closedAt: Instant?,
     val openedBy: String?,
-    val expiresAt: Instant?
+    val expiresAt: Instant?,
+    val orderType: String = "DINE_IN",
+    val buffetTierId: String? = null,
+    val buffetTierName: String? = null
 )

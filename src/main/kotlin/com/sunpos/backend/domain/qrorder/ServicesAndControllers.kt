@@ -35,7 +35,8 @@ class QrOrderService(
     private val modifierRepository: com.sunpos.backend.domain.catalog.ModifierRepository? = null,
     private val orderRepository: com.sunpos.backend.domain.order.OrderRepository? = null,
     private val buffetSessionRepository: com.sunpos.backend.domain.order.BuffetSessionRepository? = null,
-    private val buffetPromotionMenuItemRepository: com.sunpos.backend.domain.order.BuffetPromotionMenuItemRepository? = null
+    private val buffetPromotionMenuItemRepository: com.sunpos.backend.domain.order.BuffetPromotionMenuItemRepository? = null,
+    private val buffetPromotionRepository: com.sunpos.backend.domain.order.BuffetPromotionRepository? = null
 ) {
     private val logger = LoggerFactory.getLogger(QrOrderService::class.java)
 
@@ -381,33 +382,85 @@ class QrOrderService(
         // 4. Resolve active buffet session if tableNumber is present
         var buffetLinkMap: Map<String, com.sunpos.backend.domain.order.BuffetPromotionMenuItem> = emptyMap()
         var isBuffetActive = false
-        if (!tableNumber.isNullOrBlank() && buffetSessionRepository != null && buffetPromotionMenuItemRepository != null) {
+        if (!tableNumber.isNullOrBlank() && buffetPromotionMenuItemRepository != null) {
             try {
-                val activeSessions = buffetSessionRepository.findByBranchIdAndStatus(branchId, com.sunpos.backend.domain.order.BuffetSessionStatus.ACTIVE)
-                val activeTableSession = qrTableSessionService?.getActiveSession(branchId, tableNumber.trim())?.orElse(null)
-                val activeTableOrders = if (activeTableSession != null) {
-                    orderRepository?.findByTableSessionId(activeTableSession.id) ?: emptyList()
+                // Priority 1: Check QrTableSession for this table
+                val activeTableSession = if (!token.isNullOrBlank() && qrTableSessionService != null) {
+                    qrTableSessionService.findActiveSessionByToken(token).orElse(null)
+                        ?: qrTableSessionService.getActiveSession(branchId, tableNumber.trim()).orElse(null)
                 } else {
-                    orderRepository?.findByBranchId(branchId)?.filter { it.status == com.sunpos.backend.domain.order.OrderStatus.OPEN } ?: emptyList()
+                    qrTableSessionService?.getActiveSession(branchId, tableNumber.trim())?.orElse(null)
                 }
-                val activeOrderIds = activeTableOrders.map { it.id }.toSet()
-                val session = activeSessions.firstOrNull { it.orderId in activeOrderIds }
-                if (session != null) {
-                    val links = buffetPromotionMenuItemRepository.findByPromotionId(session.buffetTierId)
+
+                var resolvedBuffetTierId = activeTableSession?.buffetTierId?.ifBlank { null }
+                val isBuffetSession = activeTableSession?.orderType.equals("BUFFET", ignoreCase = true) || !resolvedBuffetTierId.isNullOrBlank()
+
+                // If tierId is not set directly, look up by buffetTierName
+                if (resolvedBuffetTierId == null && !activeTableSession?.buffetTierName.isNullOrBlank() && buffetPromotionRepository != null) {
+                    val tierName = activeTableSession?.buffetTierName!!.trim().lowercase()
+                    val promo = buffetPromotionRepository.findAll().firstOrNull {
+                        it.name.trim().lowercase() == tierName || tierName.contains(it.name.trim().lowercase())
+                    }
+                    if (promo != null) {
+                        resolvedBuffetTierId = promo.id
+                    }
+                }
+
+                // Priority 2: Fallback to existing buffetSessionRepository and active orders
+                if (resolvedBuffetTierId == null && activeTableSession != null) {
+                    val activeOrders = orderRepository?.findByTableSessionId(activeTableSession.id)
+                        ?: (if (activeTableSession.tableId.isNotBlank()) orderRepository?.findByTableId(activeTableSession.tableId) else null)
+                        ?: emptyList()
+                    val buffetOrder = activeOrders.firstOrNull { it.orderType == com.sunpos.backend.domain.order.OrderType.BUFFET }
+                    if (buffetOrder != null) {
+                        isBuffetActive = true
+                    }
+                    if (buffetSessionRepository != null) {
+                        val activeOrderIds = activeOrders.map { it.id }.toSet()
+                        val activeSessions = buffetSessionRepository.findByBranchIdAndStatus(branchId, com.sunpos.backend.domain.order.BuffetSessionStatus.ACTIVE)
+                        val session = activeSessions.firstOrNull { it.orderId in activeOrderIds }
+                        if (session != null) {
+                            resolvedBuffetTierId = session.buffetTierId
+                        }
+                    }
+                }
+
+                // Priority 3: If buffet is active but tierId wasn't specified, fallback to branch's active buffet promotion
+                if (resolvedBuffetTierId == null && isBuffetSession && buffetPromotionRepository != null) {
+                    val promos = buffetPromotionRepository.findAll().filter { it.status == com.sunpos.backend.domain.order.BuffetPromotionStatus.ACTIVE }
+                    val branchPromos = promos.filter { it.branchId == branchId || (!brandId.isNullOrBlank() && it.brandId == brandId) }
+                    if (branchPromos.isNotEmpty()) {
+                        resolvedBuffetTierId = branchPromos[0].id
+                    } else if (promos.isNotEmpty()) {
+                        resolvedBuffetTierId = promos[0].id
+                    }
+                }
+
+                if (!resolvedBuffetTierId.isNullOrBlank()) {
+                    val links = buffetPromotionMenuItemRepository.findByPromotionId(resolvedBuffetTierId)
                     if (links.isNotEmpty()) {
                         buffetLinkMap = links.associateBy { it.menuItemId }
                         isBuffetActive = true
                     }
+                } else if (isBuffetSession) {
+                    isBuffetActive = true
                 }
             } catch (e: Exception) {
                 logger.debug("Buffet session lookup skipped: {}", e.message)
             }
         }
 
-        // 5. Map products into categories and omit categories without available items
-        val categoryDtos = if (allCategories.isNotEmpty() && qrProducts.isNotEmpty()) {
+        // 5. Filter products: Buffet tables must ONLY see items included in the buffet package (ADR 0026 & ADR 0027)
+        val availableProducts = if (isBuffetActive && buffetLinkMap.isNotEmpty()) {
+            qrProducts.filter { buffetLinkMap.containsKey(it.id) }
+        } else {
+            qrProducts
+        }
+
+        // 6. Map products into categories and omit categories without available items
+        val categoryDtos = if (allCategories.isNotEmpty() && availableProducts.isNotEmpty()) {
             allCategories.mapNotNull { cat ->
-                val prods = qrProducts.filter { it.categoryId == cat.id }
+                val prods = availableProducts.filter { it.categoryId == cat.id }
                 if (prods.isEmpty()) {
                     null
                 } else {
