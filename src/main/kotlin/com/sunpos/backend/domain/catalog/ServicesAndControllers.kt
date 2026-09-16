@@ -271,10 +271,26 @@ class CatalogService(
             null
         }
 
+        val resolvedBranchId = if (dto.branchId.isNotBlank()) {
+            dto.branchId
+        } else if (targetBranchIds.isNotEmpty()) {
+            targetBranchIds.first()
+        } else {
+            branchRepository?.findAll()?.firstOrNull()?.id ?: ""
+        }
+
+        val resolvedBrandId = if (!dto.brandId.isNullOrBlank()) {
+            dto.brandId
+        } else if (resolvedBranchId.isNotBlank()) {
+            branchRepository?.findById(resolvedBranchId)?.orElse(null)?.brandId
+        } else {
+            null
+        }
+
         val item = MenuItem(
             id = if (!dto.id.isNullOrBlank()) dto.id else UUID.randomUUID().toString(),
-            branchId = dto.branchId,
-            brandId = dto.brandId,
+            branchId = resolvedBranchId,
+            brandId = resolvedBrandId,
             categoryId = dto.categoryId,
             globalProductId = resolvedGlobalProductId,
             name = dto.name.trim(),

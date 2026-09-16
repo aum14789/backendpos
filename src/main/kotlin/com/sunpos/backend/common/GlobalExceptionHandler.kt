@@ -51,7 +51,9 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException::class)
     fun handleDataIntegrityViolation(ex: org.springframework.dao.DataIntegrityViolationException): ResponseEntity<ApiResponse<Nothing>> {
-        val msg = if (ex.message?.contains("violates foreign key constraint") == true) {
+        val msg = if (ex.message?.contains("is not present in table") == true) {
+            "ข้อมูลที่เชื่อมโยง (เช่น สาขา หรือ หมวดหมู่) ไม่ถูกต้องหรือไม่พบในระบบ: ${ex.rootCause?.message ?: ex.message}"
+        } else if (ex.message?.contains("violates foreign key constraint") == true) {
             "ไม่สามารถดำเนินการได้เนื่องจากข้อมูลยังถูกอ้างอิงอยู่โดยรายการอื่นในระบบ (Foreign Key Constraint)"
         } else {
             "ข้อมูลขัดแย้งกับข้อจำกัดความสมบูรณ์ของฐานข้อมูล: ${ex.rootCause?.message ?: ex.message}"
