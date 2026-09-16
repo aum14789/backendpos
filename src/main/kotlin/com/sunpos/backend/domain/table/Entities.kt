@@ -84,3 +84,8 @@ data class OpenSessionDto(
     val branchId: String = "",
     val openedBy: String? = null
 )
+
+data class MoveTableDto(
+    val fromTableId: String = "",
+    val toTableId: String = ""
+)

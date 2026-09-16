@@ -167,6 +167,7 @@ class TableService(
 class TableSessionService(
     private val tableSessionRepository: TableSessionRepository,
     private val tableRepository: TableRepository,
+    private val jdbcTemplate: JdbcTemplate,
     private val qrTableSessionService: QrTableSessionService? = null
 ) {
     private val logger = LoggerFactory.getLogger(TableSessionService::class.java)
@@ -240,6 +241,56 @@ class TableSessionService(
 
         return savedSession
     }
+
+    @Transactional
+    fun moveTable(dto: MoveTableDto): RestaurantTable {
+        val fromTable = tableRepository.findById(dto.fromTableId)
+            .orElseThrow { IllegalArgumentException("From table not found: ${dto.fromTableId}") }
+        val toTable = tableRepository.findById(dto.toTableId)
+            .orElseThrow { IllegalArgumentException("To table not found: ${dto.toTableId}") }
+
+        // 1. Move Active Table Sessions
+        val activeSessions = tableSessionRepository.findByBranchIdAndStatus(fromTable.branchId, "ACTIVE")
+            .filter { it.tableId == dto.fromTableId }
+        for (session in activeSessions) {
+            session.tableId = dto.toTableId
+            tableSessionRepository.save(session)
+        }
+
+        // 2. Move Active Orders
+        try {
+            jdbcTemplate.update(
+                "UPDATE orders SET table_id = ? WHERE table_id = ? AND status NOT IN ('PAID', 'CANCELLED', 'COMPLETED', 'VOIDED')",
+                dto.toTableId, dto.fromTableId
+            )
+        } catch (e: Exception) {
+            logger.warn("Failed to update orders table_id during move: {}", e.message)
+        }
+
+        // 3. Move Active QR Table Sessions
+        try {
+            jdbcTemplate.update(
+                "UPDATE qr_table_sessions SET table_id = ?, table_number = ? WHERE table_id = ? AND status = 'ACTIVE'",
+                dto.toTableId, toTable.nameNumber, dto.fromTableId
+            )
+        } catch (e: Exception) {
+            logger.warn("Failed to update qr_table_sessions table_id during move: {}", e.message)
+        }
+
+        // 4. Update table statuses
+        toTable.status = if (fromTable.status == "AVAILABLE") "OCCUPIED" else fromTable.status
+        toTable.updatedAt = Instant.now()
+        val savedToTable = tableRepository.save(toTable)
+
+        fromTable.status = "AVAILABLE"
+        fromTable.updatedAt = Instant.now()
+        tableRepository.save(fromTable)
+
+        logger.info("Successfully moved table {} ({}) -> {} ({})",
+            fromTable.nameNumber, dto.fromTableId, toTable.nameNumber, dto.toTableId)
+
+        return savedToTable
+    }
 }
 
 @RestController
@@ -248,6 +299,10 @@ class TableController(
     private val tableService: TableService,
     private val tableSessionService: TableSessionService
 ) {
+    @PostMapping("/move")
+    fun moveTable(@RequestBody dto: MoveTableDto): ApiResponse<RestaurantTable> {
+        return ApiResponse.success(tableSessionService.moveTable(dto), "Table moved successfully")
+    }
     @GetMapping("/zones")
     fun getZones(@RequestParam(required = false) branchId: String?): ApiResponse<List<Zone>> {
         return ApiResponse.success(tableService.listZones(branchId))
