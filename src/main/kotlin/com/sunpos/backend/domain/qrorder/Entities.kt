@@ -3,6 +3,8 @@ package com.sunpos.backend.domain.qrorder
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
+import jakarta.validation.Valid
+import jakarta.validation.constraints.*
 
 enum class QrOrderStatus {
     pending,
@@ -87,18 +89,28 @@ data class QrOrderDetailsDto(
 )
 
 data class PublicOrderItemRequest(
+    @field:NotBlank(message = "รหัสสินค้าต้องไม่เป็นค่าว่าง")
     val productId: String,
+    @field:NotBlank(message = "ชื่อสินค้าต้องไม่เป็นค่าว่าง")
     val productName: String,
+    @field:Positive(message = "จำนวนสินค้าต้องมากกว่า 0")
     val quantity: Int = 1,
+    @field:DecimalMin(value = "0.0", inclusive = true, message = "ราคาต่อหน่วยต้องไม่ติดลบ")
     val unitPrice: BigDecimal = BigDecimal.ZERO,
     val options: Any? = null,
+    @field:Size(max = 200, message = "หมายเหตุรายการอาหารต้องไม่เกิน 200 ตัวอักษร")
     val note: String? = null
 )
 
 data class CreatePublicOrderRequest(
+    @field:NotBlank(message = "รหัสสาขาต้องไม่เป็นค่าว่าง")
     val branchId: String,
+    @field:NotBlank(message = "หมายเลขโต๊ะต้องไม่เป็นค่าว่าง")
     val tableNumber: String,
+    @field:Size(max = 200, message = "หมายเหตุเพิ่มเติมต้องไม่เกิน 200 ตัวอักษร")
     val customerNote: String? = null,
+    @field:NotEmpty(message = "ต้องมีรายการอาหารในคำสั่งซื้ออย่างน้อย 1 รายการ")
+    @field:Valid
     val items: List<PublicOrderItemRequest> = emptyList(),
     val token: String? = null
 )

@@ -831,7 +831,7 @@ class PublicOrderController(
     fun createPublicOrder(
         @RequestHeader(value = "Idempotency-Key", required = false) idempotencyKey: String?,
         @RequestHeader(value = "X-Session-Token", required = false) headerToken: String?,
-        @RequestBody dto: CreatePublicOrderRequest
+        @jakarta.validation.Valid @RequestBody dto: CreatePublicOrderRequest
     ): PublicOrderResponse {
         val effectiveDto = if (dto.token.isNullOrBlank() && !headerToken.isNullOrBlank()) {
             dto.copy(token = headerToken.trim())

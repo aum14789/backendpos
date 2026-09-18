@@ -19,10 +19,27 @@ class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleValidationErrors(ex: MethodArgumentNotValidException): ResponseEntity<ApiResponse<Nothing>> {
         val details = ex.bindingResult.fieldErrors.map {
-            mapOf("field" to it.field, "issue" to (it.defaultMessage ?: "Invalid value"))
+            mapOf("field" to it.field, "issue" to (it.defaultMessage ?: "ค่าของฟิลด์นี้ไม่ถูกต้อง"))
+        }
+        val firstErrorMessage = ex.bindingResult.fieldErrors.firstOrNull()?.defaultMessage
+            ?: "ข้อมูลที่ส่งมาไม่ถูกต้องตามเงื่อนไข"
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ApiResponse.error("VALIDATION_FAILED", firstErrorMessage, details))
+    }
+
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException::class)
+    fun handleHttpMessageNotReadable(ex: org.springframework.http.converter.HttpMessageNotReadableException): ResponseEntity<ApiResponse<Nothing>> {
+        val rootCause = ex.rootCause
+        val message = when (rootCause) {
+            is com.fasterxml.jackson.databind.exc.MismatchedInputException -> {
+                val fieldName = rootCause.path.joinToString(".") { it.fieldName ?: "[${it.index}]" }
+                "รูปแบบหรือประเภทข้อมูลของฟิลด์ '$fieldName' ไม่ถูกต้อง"
+            }
+            is com.fasterxml.jackson.core.JsonParseException -> "รูปแบบข้อมูล JSON ไม่ถูกต้อง"
+            else -> "ข้อมูลที่ส่งมาไม่ถูกต้องหรือไม่สามารถประมวลผลได้"
         }
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-            .body(ApiResponse.error("VALIDATION_FAILED", "Request validation failed", details))
+            .body(ApiResponse.error("MALFORMED_REQUEST", message))
     }
 
     @ExceptionHandler(NoSuchElementException::class)

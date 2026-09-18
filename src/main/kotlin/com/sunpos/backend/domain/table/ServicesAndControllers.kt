@@ -167,7 +167,7 @@ class TableService(
 class TableSessionService(
     private val tableSessionRepository: TableSessionRepository,
     private val tableRepository: TableRepository,
-    private val jdbcTemplate: JdbcTemplate,
+    private val jdbcTemplate: JdbcTemplate? = null,
     private val qrTableSessionService: QrTableSessionService? = null
 ) {
     private val logger = LoggerFactory.getLogger(TableSessionService::class.java)
@@ -259,7 +259,7 @@ class TableSessionService(
 
         // 2. Move Active Orders
         try {
-            jdbcTemplate.update(
+            jdbcTemplate?.update(
                 "UPDATE orders SET table_id = ? WHERE table_id = ? AND status NOT IN ('PAID', 'CANCELLED', 'COMPLETED', 'VOIDED')",
                 dto.toTableId, dto.fromTableId
             )
@@ -269,7 +269,7 @@ class TableSessionService(
 
         // 3. Move Active QR Table Sessions
         try {
-            jdbcTemplate.update(
+            jdbcTemplate?.update(
                 "UPDATE qr_table_sessions SET table_id = ?, table_number = ? WHERE table_id = ? AND status = 'ACTIVE'",
                 dto.toTableId, toTable.nameNumber, dto.fromTableId
             )
