@@ -572,6 +572,7 @@ CREATE TABLE IF NOT EXISTS inventory_stocks (
     inventory_item_id VARCHAR(36) NOT NULL,
     quantity NUMERIC(12, 4) DEFAULT 0.0000 NOT NULL,
     weighted_average_cost NUMERIC(15, 4) DEFAULT 0.0000 NOT NULL,
+    is_auto_provisioned BOOLEAN DEFAULT false,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_inventory_stocks PRIMARY KEY (id),
     CONSTRAINT uk_warehouse_item UNIQUE (warehouse_id, inventory_item_id)
@@ -1095,7 +1096,8 @@ CREATE TABLE IF NOT EXISTS qr_order_items (
 -- Table: qr_order_menu_item_settings
 CREATE TABLE IF NOT EXISTS qr_order_menu_item_settings (
     id VARCHAR(36) NOT NULL,
-    branch_id VARCHAR(36) NOT NULL,
+    branch_id VARCHAR(36),
+    brand_id VARCHAR(36),
     menu_item_id VARCHAR(36) NOT NULL,
     is_enabled BOOLEAN DEFAULT true NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -1137,6 +1139,9 @@ CREATE TABLE IF NOT EXISTS qr_table_sessions (
     closed_at TIMESTAMP WITH TIME ZONE,
     opened_by VARCHAR(36),
     expires_at TIMESTAMP WITH TIME ZONE,
+    order_type VARCHAR(20) DEFAULT 'DINE_IN',
+    buffet_tier_id VARCHAR(64),
+    buffet_tier_name VARCHAR(100),
     CONSTRAINT pk_qr_table_sessions PRIMARY KEY (id)
 );
 
@@ -1455,6 +1460,149 @@ CREATE TABLE IF NOT EXISTS tax_invoices (
     CONSTRAINT pk_tax_invoices PRIMARY KEY (id),
     CONSTRAINT tax_invoices_tax_invoice_number_key UNIQUE (tax_invoice_number)
 );
+
+
+-- Table: global_products (V5 2-Tier Product Concept)
+CREATE TABLE IF NOT EXISTS global_products (
+    id VARCHAR(36) NOT NULL,
+    company_id VARCHAR(36) NOT NULL,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_global_products PRIMARY KEY (id),
+    CONSTRAINT uq_global_products_company_code UNIQUE (company_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_global_products_company ON global_products(company_id);
+
+-- Operational Audit Trail Tables (ADR 0030)
+-- 1. Table: manual_discount_logs
+CREATE TABLE IF NOT EXISTS manual_discount_logs (
+    id VARCHAR(64) NOT NULL,
+    order_id VARCHAR(64) NOT NULL,
+    branch_id VARCHAR(64) NOT NULL,
+    discount_type VARCHAR(20) DEFAULT 'PERCENT' NOT NULL,
+    discount_value NUMERIC(10, 2) DEFAULT 0.00 NOT NULL,
+    discount_satang BIGINT DEFAULT 0 NOT NULL,
+    original_gross_satang BIGINT DEFAULT 0 NOT NULL,
+    final_net_satang BIGINT DEFAULT 0 NOT NULL,
+    reason TEXT NOT NULL,
+    requested_by VARCHAR(100) NOT NULL,
+    approved_by VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_manual_discount_logs PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_manual_discount_logs_order ON manual_discount_logs(order_id);
+CREATE INDEX IF NOT EXISTS idx_manual_discount_logs_branch ON manual_discount_logs(branch_id);
+
+-- 2. Table: cash_drawer_logs
+CREATE TABLE IF NOT EXISTS cash_drawer_logs (
+    id VARCHAR(64) NOT NULL,
+    branch_id VARCHAR(64) NOT NULL,
+    device_id VARCHAR(100),
+    action VARCHAR(50) DEFAULT 'NO_SALE_OPEN' NOT NULL,
+    opened_by VARCHAR(100) NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_cash_drawer_logs PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_cash_drawer_logs_branch ON cash_drawer_logs(branch_id);
+
+-- 3. Table: order_cancellation_logs
+CREATE TABLE IF NOT EXISTS order_cancellation_logs (
+    id VARCHAR(64) NOT NULL,
+    order_id VARCHAR(64) NOT NULL,
+    table_id VARCHAR(64),
+    branch_id VARCHAR(64) NOT NULL,
+    cancelled_by VARCHAR(100) NOT NULL,
+    approved_by VARCHAR(100) NOT NULL,
+    reason TEXT NOT NULL,
+    waste_decision VARCHAR(20) DEFAULT 'RESTOCK' NOT NULL,
+    total_satang_loss BIGINT DEFAULT 0 NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_order_cancellation_logs PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_order_cancellation_logs_order ON order_cancellation_logs(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_cancellation_logs_branch ON order_cancellation_logs(branch_id);
+
+-- 4. Table: shift_payout_logs
+CREATE TABLE IF NOT EXISTS shift_payout_logs (
+    id VARCHAR(64) NOT NULL,
+    shift_id VARCHAR(64),
+    branch_id VARCHAR(64) NOT NULL,
+    amount_satang BIGINT DEFAULT 0 NOT NULL,
+    reason TEXT NOT NULL,
+    paid_to VARCHAR(100),
+    requested_by VARCHAR(100) NOT NULL,
+    approved_by VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_shift_payout_logs PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_shift_payout_logs_shift ON shift_payout_logs(shift_id);
+
+-- 5. Table: shift_discrepancy_logs
+CREATE TABLE IF NOT EXISTS shift_discrepancy_logs (
+    id VARCHAR(64) NOT NULL,
+    shift_id VARCHAR(64) NOT NULL,
+    branch_id VARCHAR(64) NOT NULL,
+    expected_satang BIGINT DEFAULT 0 NOT NULL,
+    counted_satang BIGINT DEFAULT 0 NOT NULL,
+    discrepancy_satang BIGINT DEFAULT 0 NOT NULL,
+    cashier_id VARCHAR(100) NOT NULL,
+    acknowledged_by VARCHAR(100) NOT NULL,
+    reason TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_shift_discrepancy_logs PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_shift_discrepancy_logs_shift ON shift_discrepancy_logs(shift_id);
+
+-- 6. Table: buffet_adjustment_logs
+CREATE TABLE IF NOT EXISTS buffet_adjustment_logs (
+    id VARCHAR(64) NOT NULL,
+    order_id VARCHAR(64) NOT NULL,
+    table_id VARCHAR(64) NOT NULL,
+    branch_id VARCHAR(64) NOT NULL,
+    before_covers INTEGER DEFAULT 0 NOT NULL,
+    after_covers INTEGER DEFAULT 0 NOT NULL,
+    before_tier VARCHAR(100),
+    after_tier VARCHAR(100),
+    adjusted_by VARCHAR(100) NOT NULL,
+    approved_by VARCHAR(100) NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_buffet_adjustment_logs PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_buffet_adjustment_logs_order ON buffet_adjustment_logs(order_id);
+
+-- 7. Table: receipt_reprint_logs
+CREATE TABLE IF NOT EXISTS receipt_reprint_logs (
+    id VARCHAR(64) NOT NULL,
+    order_id VARCHAR(64) NOT NULL,
+    branch_id VARCHAR(64) NOT NULL,
+    document_type VARCHAR(50) DEFAULT 'RECEIPT' NOT NULL,
+    document_number VARCHAR(100),
+    reprint_sequence INTEGER DEFAULT 1 NOT NULL,
+    reprinted_by VARCHAR(100) NOT NULL,
+    reason TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_receipt_reprint_logs PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_receipt_reprint_logs_order ON receipt_reprint_logs(order_id);
+
+-- 8. Table: pin_security_logs
+CREATE TABLE IF NOT EXISTS pin_security_logs (
+    id VARCHAR(64) NOT NULL,
+    branch_id VARCHAR(64) NOT NULL,
+    device_id VARCHAR(100),
+    attempted_action VARCHAR(100) NOT NULL,
+    attempted_by VARCHAR(100),
+    failed_count INTEGER DEFAULT 1 NOT NULL,
+    is_locked_out BOOLEAN DEFAULT false NOT NULL,
+    locked_until TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_pin_security_logs PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_pin_security_logs_branch ON pin_security_logs(branch_id);
 
 -- Table: user_roles
 CREATE TABLE IF NOT EXISTS user_roles (

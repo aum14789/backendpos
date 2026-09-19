@@ -118,6 +118,109 @@ class BillCheckLog(
     var snapshotTotalSatang: Long = 0L
 )
 
+class ManualDiscountLog(
+    val id: String = UUID.randomUUID().toString(),
+    var orderId: String = "",
+    var branchId: String = "",
+    var discountType: String = "PERCENT",
+    var discountValue: BigDecimal = BigDecimal.ZERO,
+    var discountSatang: Long = 0L,
+    var originalGrossSatang: Long = 0L,
+    var finalNetSatang: Long = 0L,
+    var reason: String = "",
+    var requestedBy: String = "",
+    var approvedBy: String = "",
+    var createdAt: Instant = Instant.now()
+)
+
+class CashDrawerLog(
+    val id: String = UUID.randomUUID().toString(),
+    var branchId: String = "",
+    var deviceId: String? = null,
+    var action: String = "NO_SALE_OPEN",
+    var openedBy: String = "",
+    var reason: String = "",
+    var createdAt: Instant = Instant.now()
+)
+
+class OrderCancellationLog(
+    val id: String = UUID.randomUUID().toString(),
+    var orderId: String = "",
+    var tableId: String? = null,
+    var branchId: String = "",
+    var cancelledBy: String = "",
+    var approvedBy: String = "",
+    var reason: String = "",
+    var wasteDecision: String = "RESTOCK",
+    var totalSatangLoss: Long = 0L,
+    var createdAt: Instant = Instant.now()
+)
+
+class ShiftPayoutLog(
+    val id: String = UUID.randomUUID().toString(),
+    var shiftId: String? = null,
+    var branchId: String = "",
+    var amountSatang: Long = 0L,
+    var reason: String = "",
+    var paidTo: String? = null,
+    var requestedBy: String = "",
+    var approvedBy: String = "",
+    var createdAt: Instant = Instant.now()
+)
+
+class ShiftDiscrepancyLog(
+    val id: String = UUID.randomUUID().toString(),
+    var shiftId: String = "",
+    var branchId: String = "",
+    var expectedSatang: Long = 0L,
+    var countedSatang: Long = 0L,
+    var discrepancySatang: Long = 0L,
+    var cashierId: String = "",
+    var acknowledgedBy: String = "",
+    var reason: String? = null,
+    var createdAt: Instant = Instant.now()
+)
+
+class BuffetAdjustmentLog(
+    val id: String = UUID.randomUUID().toString(),
+    var orderId: String = "",
+    var tableId: String = "",
+    var branchId: String = "",
+    var beforeCovers: Int = 0,
+    var afterCovers: Int = 0,
+    var beforeTier: String? = null,
+    var afterTier: String? = null,
+    var adjustedBy: String = "",
+    var approvedBy: String = "",
+    var reason: String = "",
+    var createdAt: Instant = Instant.now()
+)
+
+class ReceiptReprintLog(
+    val id: String = UUID.randomUUID().toString(),
+    var orderId: String = "",
+    var branchId: String = "",
+    var documentType: String = "RECEIPT",
+    var documentNumber: String? = null,
+    var reprintSequence: Int = 1,
+    var reprintedBy: String = "",
+    var reason: String? = null,
+    var createdAt: Instant = Instant.now()
+)
+
+class PinSecurityLog(
+    val id: String = UUID.randomUUID().toString(),
+    var branchId: String = "",
+    var deviceId: String? = null,
+    var attemptedAction: String = "",
+    var attemptedBy: String? = null,
+    var failedCount: Int = 1,
+    var isLockedOut: Boolean = false,
+    var lockedUntil: Instant? = null,
+    var createdAt: Instant = Instant.now()
+)
+
+
 class OrderItemModifier(
     val id: String = UUID.randomUUID().toString(),
     var orderItemId: String = "",
