@@ -16,6 +16,16 @@ class RecipeServiceTest {
     @Autowired
     private lateinit var recipeService: RecipeService
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
+    @org.junit.jupiter.api.BeforeEach
+    fun setUp() {
+        testFixtureFactory.ensureBranch("branch-001")
+        testFixtureFactory.ensureMenuItem("menu-test-1", "branch-001", name = "Kra Pao")
+        testFixtureFactory.ensureInventoryItem("raw-001", "SKU-RAW-001", "Raw Pork", "kg")
+    }
+
     @Test
     fun `test recipe versioning and BOM creation`() {
         val dto1 = CreateRecipeDto(

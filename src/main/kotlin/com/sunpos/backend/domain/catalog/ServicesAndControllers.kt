@@ -358,10 +358,13 @@ class CatalogService(
         // Save branch assignments
         if (dto.branchAssignments.isNotEmpty()) {
             for (assignment in dto.branchAssignments) {
+                val resolvedBrandId = assignment.brandId.ifBlank {
+                    branchRepository?.findById(assignment.branchId)?.orElse(null)?.brandId?.ifBlank { "brand-001" } ?: "brand-001"
+                }
                 menuItemBranchRepository.save(
                     MenuItemBranch(
                         menuItemId = saved.id,
-                        brandId = assignment.brandId,
+                        brandId = resolvedBrandId,
                         branchId = assignment.branchId,
                         isActive = assignment.isActive,
                         priceOverride = assignment.priceOverride
@@ -369,10 +372,12 @@ class CatalogService(
                 )
             }
         } else if (dto.branchId.isNotBlank()) {
+            val resolvedBrandId = dto.brandId?.ifBlank { null }
+                ?: branchRepository?.findById(dto.branchId)?.orElse(null)?.brandId?.ifBlank { "brand-001" } ?: "brand-001"
             menuItemBranchRepository.save(
                 MenuItemBranch(
                     menuItemId = saved.id,
-                    brandId = dto.brandId ?: "",
+                    brandId = resolvedBrandId,
                     branchId = dto.branchId,
                     isActive = true
                 )
@@ -502,10 +507,13 @@ class CatalogService(
         if (dto.branchAssignments.isNotEmpty()) {
             menuItemBranchRepository.deleteByMenuItemId(id)
             for (assignment in dto.branchAssignments) {
+                val resolvedBrandId = assignment.brandId.ifBlank {
+                    branchRepository?.findById(assignment.branchId)?.orElse(null)?.brandId?.ifBlank { "brand-001" } ?: "brand-001"
+                }
                 menuItemBranchRepository.save(
                     MenuItemBranch(
                         menuItemId = id,
-                        brandId = assignment.brandId,
+                        brandId = resolvedBrandId,
                         branchId = assignment.branchId,
                         isActive = assignment.isActive,
                         priceOverride = assignment.priceOverride

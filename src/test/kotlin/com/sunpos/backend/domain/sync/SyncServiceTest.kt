@@ -43,6 +43,15 @@ class SyncServiceTest {
     @Autowired
     private lateinit var couponService: CouponService
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
+    @org.junit.jupiter.api.BeforeEach
+    fun setUp() {
+        testFixtureFactory.ensureBranch("branch-001")
+        testFixtureFactory.ensureCustomer("cust-crm-fallback", "comp-001", "Fallback Customer", "0891234567")
+    }
+
     @Test
     fun `test offline PUSH batch idempotency, domain entity application, and duplicate filtering`() {
         val branchId = "branch-001"

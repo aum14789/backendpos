@@ -31,9 +31,13 @@ class BuffetPromotionMultiBrandTest {
     @Autowired
     private lateinit var menuItemRepository: MenuItemRepository
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
     @Test
     fun `test multi-brand buffet promotion inheritance and menu filtering`() {
         val companyId = "comp-buffet-01"
+        testFixtureFactory.ensureCompany(companyId)
 
         // 1. Create Brands A and B
         val brandA = brandRepository.save(
@@ -50,6 +54,10 @@ class BuffetPromotionMultiBrandTest {
         val branchB1 = branchRepository.save(
             Branch(companyId = companyId, brandId = brandB.id, name = "Central World B1", code = "BR-B1")
         )
+
+        testFixtureFactory.ensureMenuCategory("cat-meat", branchA1.id, "Meat")
+        testFixtureFactory.ensureMenuCategory("cat-fish", branchB1.id, "Fish")
+        testFixtureFactory.ensureOrder("ord-buf-001", branchA1.id)
 
         // 3. Create Menu Items
         val itemBeef = menuItemRepository.save(

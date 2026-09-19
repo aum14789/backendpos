@@ -41,6 +41,16 @@ class TaxInvoiceAndPaymentEnhancementTest {
     @Autowired
     private lateinit var crmService: CrmService
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
+    @org.junit.jupiter.api.BeforeEach
+    fun setUp() {
+        testFixtureFactory.ensureBranch("branch-tax")
+        testFixtureFactory.ensureBranch("branch-crm")
+        testFixtureFactory.ensureCustomer("cust-corp-99")
+    }
+
     @Test
     fun `test Merge Receipts to single Tax Invoice without recalculating discounts`() {
         businessDayService.getOrCreateOpenBusinessDay("branch-tax")

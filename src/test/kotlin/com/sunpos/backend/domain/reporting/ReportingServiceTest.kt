@@ -42,6 +42,16 @@ class ReportingServiceTest {
     @Autowired
     private lateinit var reportingService: ReportingService
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
+    @org.junit.jupiter.api.BeforeEach
+    fun setUp() {
+        testFixtureFactory.ensureBranch("branch-001")
+        testFixtureFactory.ensureWarehouse("wh-001", "branch-001", "Branch 001 Warehouse", "WH-001")
+        testFixtureFactory.ensureInventoryItem("item-pork-01", "SKU-PORK-01", "Pork", "kg", "g")
+    }
+
     @Test
     fun `test read-only reporting calculations for sales, payment breakdown, gross profit, inventory valuation, and crm analytics`() {
         val category = catalogService.createCategory(MenuCategory(branchId = "branch-001", name = "Food"))

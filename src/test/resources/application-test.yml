@@ -5,10 +5,8 @@ spring:
   flyway:
     # The consolidated V1 baseline is itself under test, so let it apply.
     enabled: true
-    # `db/test-migration` holds test-only migrations. The one there today makes the
-    # baseline's 146 FK constraints DEFERRABLE so the Firestore-era test corpus, which
-    # fabricates parent ids, is not rejected on insert. Production never loads it.
-    locations: classpath:db/migration,classpath:db/test-migration
+    # The consolidated V1 baseline applies cleanly and directly without test-only relaxation.
+    locations: classpath:db/migration
 
 sunpos:
   jwt:

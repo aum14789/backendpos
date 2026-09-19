@@ -28,6 +28,9 @@ class SecurityAndCorsTest {
     @Autowired
     private lateinit var branchRepository: BranchRepository
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
     @Test
     fun `test public endpoints allow unauthenticated access`() {
         // GET /api/public/menu/{branchId} without any token
@@ -79,6 +82,9 @@ class SecurityAndCorsTest {
     fun `test internal endpoint requires active key or internal secret`() {
         val testBranchId = "BR-INTERNAL-01"
         val testKey = "SUN-SEC-KEY-999"
+
+        testFixtureFactory.ensureCompany("CMP-01")
+        testFixtureFactory.ensureBrand("BRD-01", "CMP-01")
 
         branchRepository.save(
             Branch(

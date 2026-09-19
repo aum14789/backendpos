@@ -98,7 +98,8 @@ class BuffetService(
     private val sessionRepository: BuffetSessionRepository,
     private val branchRepository: BranchRepository,
     private val menuItemRepository: MenuItemRepository,
-    private val categoryRepository: MenuCategoryRepository? = null
+    private val categoryRepository: MenuCategoryRepository? = null,
+    private val jdbcTemplate: JdbcTemplate? = null
 ) {
 
     // ── Multi-Brand Buffet Promotion APIs ──
@@ -231,6 +232,17 @@ class BuffetService(
         }
 
         // Harmonize with BuffetPromotionTier so both models remain 100% unified
+        jdbcTemplate?.update(
+            """
+            INSERT INTO promotions (id, code, name, promo_type, start_at, end_at, brand_id, branch_id)
+            VALUES (?, ?, ?, 'BUFFET', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '10 years', ?, ?)
+            ON CONFLICT (id) DO NOTHING
+            """.trimIndent(),
+            promo.id, "BUFFET-${promo.id}", promo.name,
+            if (promo.brandId.isNotBlank()) promo.brandId else null,
+            if (!promo.branchId.isNullOrBlank()) promo.branchId else null
+        )
+
         val tier = BuffetPromotionTier(
             id = promo.id,
             promotionId = promo.id,
@@ -350,6 +362,17 @@ class BuffetService(
 
     @Transactional
     fun createTier(dto: CreateBuffetTierDto): BuffetTierResponseDto {
+        jdbcTemplate?.update(
+            """
+            INSERT INTO promotions (id, code, name, promo_type, start_at, end_at, brand_id, branch_id)
+            VALUES (?, ?, ?, 'BUFFET', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '10 years', ?, ?)
+            ON CONFLICT (id) DO NOTHING
+            """.trimIndent(),
+            dto.promotionId, "BUFFET-${dto.promotionId}", dto.name,
+            if (!dto.brandId.isNullOrBlank()) dto.brandId else null,
+            if (!dto.branchId.isNullOrBlank()) dto.branchId else null
+        )
+
         val tier = BuffetPromotionTier(
             promotionId = dto.promotionId,
             name = dto.name,

@@ -52,6 +52,16 @@ class SaleConsumptionTest {
     @Autowired
     private lateinit var businessDayService: BusinessDayService
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
+    @org.junit.jupiter.api.BeforeEach
+    fun setUp() {
+        testFixtureFactory.ensureBranch("branch-001")
+        testFixtureFactory.ensureMenuCategory("cat-001", "branch-001")
+        testFixtureFactory.ensureWarehouse("wh-sukhumvit", "branch-001", "Sukhumvit Warehouse", "WH-SUK-01")
+    }
+
     /**
      * The baseline migration seeds `branch-001` and leaves its status at the column default,
      * PRE_OPENING. [com.sunpos.backend.domain.recipe.InventoryEodConsumptionService] deliberately

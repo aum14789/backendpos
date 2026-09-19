@@ -16,6 +16,14 @@ class InventoryServiceTest {
     @Autowired
     private lateinit var inventoryService: InventoryService
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
+    @org.junit.jupiter.api.BeforeEach
+    fun setUp() {
+        testFixtureFactory.ensureWarehouse("wh-sukhumvit")
+    }
+
     @Test
     fun `test purchase receive, WAC update, transfer in-transit, count adjustment, and waste`() {
         val item = inventoryService.createInventoryItem(

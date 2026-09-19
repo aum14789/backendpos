@@ -21,6 +21,15 @@ class PurchasingServiceTest {
     @Autowired
     private lateinit var inventoryService: InventoryService
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
+    @org.junit.jupiter.api.BeforeEach
+    fun setUp() {
+        testFixtureFactory.ensureBranch("branch-001")
+        testFixtureFactory.ensureWarehouse("wh-sukhumvit", "branch-001", "Sukhumvit Warehouse", "WH-SUK-01")
+    }
+
     @Test
     fun `test PO approval lifecycle, partial and full receive, damaged goods, purchase return, and WAC cost recalculation`() {
         // 1. Setup Supplier & Raw Item

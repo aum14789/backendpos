@@ -26,6 +26,9 @@ class DeviceCapabilityServiceTest {
     @Autowired
     private lateinit var auditLogRepository: DeviceCapabilityAuditLogRepository
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
     private lateinit var branchId: String
     private lateinit var deviceA: Device
     private lateinit var deviceB: Device
@@ -33,6 +36,7 @@ class DeviceCapabilityServiceTest {
     @BeforeEach
     fun setUp() {
         branchId = "test-branch-" + UUID.randomUUID().toString().take(8)
+        testFixtureFactory.ensureBranch(branchId)
 
         // Seed Device A (Main Cashier Station)
         deviceA = deviceRepository.save(

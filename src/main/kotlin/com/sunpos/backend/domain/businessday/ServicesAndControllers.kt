@@ -83,8 +83,8 @@ class BusinessDayService(
         day.status = BusinessDayStatus.PROCESSING
         businessDayRepository.save(day)
 
-        // Trigger stock consumption strictly for primary Main Storage Warehouses (exclude Waste & Destroy)
-        val warehouses = warehouseRepository.findByBranchId(branchId)
+        // Trigger stock consumption strictly for the single primary Main Storage Warehouse (exclude Waste & Destroy)
+        val eligibleWarehouses = warehouseRepository.findByBranchId(branchId)
             .filter { wh ->
                 wh.isActive && !wh.isCentral &&
                 !wh.name.contains("เวส", ignoreCase = true) &&
@@ -95,8 +95,17 @@ class BusinessDayService(
                 !wh.code.contains("WASTE", ignoreCase = true) &&
                 !wh.code.contains("DESTROY", ignoreCase = true)
             }
-        for (wh in warehouses) {
-            inventoryEodConsumptionService.consumeBusinessDaySales(day.id, branchId, wh.id, closedBy)
+        // Deduct from exactly one primary sales warehouse per branch
+        val primaryWarehouse = eligibleWarehouses.firstOrNull {
+            it.code.contains("MAIN", ignoreCase = true) ||
+            it.code.contains("B01", ignoreCase = true) ||
+            it.code.contains("SUK", ignoreCase = true) ||
+            it.name.contains("สาขา", ignoreCase = true) ||
+            it.name.contains("Main", ignoreCase = true)
+        } ?: eligibleWarehouses.firstOrNull()
+
+        if (primaryWarehouse != null) {
+            inventoryEodConsumptionService.consumeBusinessDaySales(day.id, branchId, primaryWarehouse.id, closedBy)
         }
 
         // Aggregate completed orders for this business day

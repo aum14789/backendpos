@@ -29,6 +29,17 @@ class CrmServiceTest {
     @Autowired
     private lateinit var couponRepository: CouponRepository
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
+    @org.junit.jupiter.api.BeforeEach
+    fun setUp() {
+        testFixtureFactory.ensureCompany("comp-001")
+        testFixtureFactory.ensureCompany("comp-999")
+        testFixtureFactory.ensureCompany("comp-point-test")
+        testFixtureFactory.ensureBranch("branch-001")
+    }
+
     @Test
     fun `test phone number normalization utility`() {
         assertEquals("0812345678", PhoneUtils.normalize("081-234-5678"))

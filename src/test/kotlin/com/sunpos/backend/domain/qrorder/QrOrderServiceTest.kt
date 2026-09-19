@@ -29,6 +29,9 @@ class QrOrderServiceTest {
     @Autowired
     private lateinit var scheduledCatalogRepository: ScheduledCatalogRepository
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
     @Test
     fun `test create QR order, query by table, and update status lifecycle`() {
         val branchId = "branch-qr-test"
@@ -98,6 +101,7 @@ class QrOrderServiceTest {
     @Test
     fun `test get branch menu returns empty list when branch has no menu (no mock in production)`() {
         val emptyBranchId = "branch-empty-${System.currentTimeMillis()}"
+        testFixtureFactory.ensureBranch(emptyBranchId)
         val menu = qrOrderService.getBranchMenu(emptyBranchId)
         assertEquals(emptyBranchId, menu.branchId)
         assertTrue(menu.categories.isEmpty(), "Categories must be empty when branch has no menu items (no mock)")
@@ -106,6 +110,7 @@ class QrOrderServiceTest {
     @Test
     fun `test get branch menu returns branch specific categories, active products, and scheduled pricing`() {
         val testBranchId = "branch-menu-test-${System.currentTimeMillis()}"
+        testFixtureFactory.ensureBranch(testBranchId)
 
         // 1. Create branch-specific category
         val cat = menuCategoryRepository.save(

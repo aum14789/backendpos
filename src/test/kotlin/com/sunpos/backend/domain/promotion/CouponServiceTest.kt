@@ -32,6 +32,9 @@ class CouponServiceTest {
     @Autowired
     private lateinit var orderRepository: OrderRepository
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
     private val companyId = "comp-001"
     private val branchId = "branch-001"
 
@@ -39,6 +42,13 @@ class CouponServiceTest {
     fun setUp() {
         couponRedemptionRepository.deleteAll()
         couponRepository.deleteAll()
+        testFixtureFactory.ensureBranch(branchId)
+        listOf("cust-001", "cust-002", "cust-003", "cust-alpha", "cust-beta", "cust-idem").forEach {
+            testFixtureFactory.ensureCustomer(it)
+        }
+        listOf("ord-001", "ord-002", "ord-c1-01").forEach {
+            testFixtureFactory.ensureOrder(it, branchId)
+        }
     }
 
     @Test

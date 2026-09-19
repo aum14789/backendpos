@@ -34,6 +34,19 @@ class EndToEndScenarioTest {
     @Autowired private lateinit var syncService: SyncService
     @Autowired private lateinit var businessDayService: BusinessDayService
     @Autowired private lateinit var catalogService: CatalogService
+    @Autowired private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
+    @org.junit.jupiter.api.BeforeEach
+    fun setUp() {
+        testFixtureFactory.ensureBranch("branch-001")
+        testFixtureFactory.ensureTable("table-01", "branch-001", "T01")
+        testFixtureFactory.ensureTable("tbl-a01", "branch-001", "A01")
+        testFixtureFactory.ensureWarehouse("wh-central", "branch-001", "Central Kitchen", "WH-CENTRAL", true)
+        testFixtureFactory.ensureWarehouse("wh-sukhumvit", "branch-001", "Sukhumvit Warehouse", "WH-SUK-01")
+        testFixtureFactory.ensureSupplier("sup-001", "Test Supplier", "SUP-01")
+        testFixtureFactory.ensureInventoryItem("raw-001", "SKU-RAW-001", "Raw Pork", "KG", "G")
+        testFixtureFactory.ensureInventoryItem("raw-002", "SKU-RAW-002", "Tom Yum Soup", "LITER", "ML")
+    }
 
     @Test
     fun `test Scenario 1 - Dine-in sale order lifecycle`() {

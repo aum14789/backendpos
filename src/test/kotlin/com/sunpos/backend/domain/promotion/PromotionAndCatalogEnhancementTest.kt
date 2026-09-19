@@ -43,6 +43,17 @@ class PromotionAndCatalogEnhancementTest {
     @Autowired
     private lateinit var couponService: CouponService
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
+    @org.junit.jupiter.api.BeforeEach
+    fun setUp() {
+        testFixtureFactory.ensureBranch("branch-promo")
+        testFixtureFactory.ensureBranch("branch-promo-2")
+        testFixtureFactory.ensureBranch("branch-promo-3")
+        testFixtureFactory.ensureCustomer("cust-001")
+    }
+
     @Test
     fun `test Modifier min and max selection bounds validation`() {
         val cat = catalogService.createCategory(MenuCategory(branchId = "branch-promo", name = "Test Category"))

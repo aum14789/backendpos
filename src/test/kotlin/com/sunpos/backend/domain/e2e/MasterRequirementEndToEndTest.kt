@@ -60,12 +60,16 @@ class MasterRequirementEndToEndTest {
     @Autowired
     private lateinit var taxInvoiceService: TaxInvoiceService
 
+    @Autowired
+    private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
+
     @Test
     fun `PHASE 35 E2E Scenario - Burger x6 with Buy 1 Burger Get 1 Coke promo, Historical Recipe Versioning, and EOD stock consumption`() {
         val branchId = "branch-e2e-master"
         val warehouseId = "wh-kitchen-master"
 
         // 1. Setup Business Day and Warehouse
+        testFixtureFactory.ensureBranch(branchId)
         val bday = businessDayService.getOrCreateOpenBusinessDay(branchId)
         val whRepo = applicationContext.getBean(WarehouseRepository::class.java)
         whRepo.save(Warehouse(id = warehouseId, branchId = branchId, name = "Master Kitchen WH", code = "WH-KITCHEN"))
@@ -207,6 +211,7 @@ class MasterRequirementEndToEndTest {
     @Test
     fun `PHASE 36 & 37 Critical Tax and Merge Promotion Scenario`() {
         val branchId = "branch-tax-critical"
+        testFixtureFactory.ensureBranch(branchId)
         businessDayService.getOrCreateOpenBusinessDay(branchId)
 
         val cat = catalogService.createCategory(MenuCategory(branchId = branchId, name = "Dining"))
