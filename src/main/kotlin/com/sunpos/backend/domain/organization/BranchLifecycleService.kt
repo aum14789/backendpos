@@ -153,7 +153,8 @@ class BranchLifecycleService(
 @RestController
 @RequestMapping("/api/v1/branches")
 class BranchLifecycleController(
-    private val lifecycleService: BranchLifecycleService
+    private val lifecycleService: BranchLifecycleService,
+    private val seedingService: BranchDataSeedingService
 ) {
     @PostMapping("/{id}/purge-test-data")
     @PreAuthorize("hasAuthority('ORGANIZATION_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_BRAND_OWNER')")
@@ -184,4 +185,15 @@ class BranchLifecycleController(
         val result = lifecycleService.resetTestBranch(id)
         return ApiResponse.success(result, "Test branch reset successfully")
     }
+
+    @PostMapping("/{id}/clone-master-data")
+    @PreAuthorize("hasAuthority('ORGANIZATION_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_BRAND_OWNER')")
+    fun cloneMasterData(
+        @PathVariable id: String,
+        @RequestBody request: CloneBranchMasterDataRequest
+    ): ApiResponse<BranchDataSeedingSummaryDto> {
+        val result = seedingService.cloneBranchMasterData(id, request)
+        return ApiResponse.success(result, "Branch master data cloned successfully")
+    }
 }
+
