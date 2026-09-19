@@ -1,0 +1,5 @@
+org.springframework.boot.env.EnvironmentPostProcessor=\
+com.sunpos.backend.config.EmbeddedPostgresEnvironmentPostProcessor
+
+org.springframework.test.context.TestExecutionListener=\
+com.sunpos.backend.config.LocalCacheResetListener

@@ -55,9 +55,19 @@ class BusinessDayService(
         val zoneId = ZoneId.of("Asia/Bangkok")
         val businessDate = businessDayResolver.resolveBusinessDate(clock.instant(), zoneId, "02:00")
 
+        // Only one row may exist per (branch_id, business_date) -- see uk_branch_business_date.
+        // A day that is already CLOSED or PROCESSING still owns its date, so reuse it instead
+        // of inserting a duplicate. Without this, retrying an end-of-day close (which must be
+        // idempotent) or reading /business-day/current after a close crashes on the constraint.
+        val sameDateDay = businessDayRepository.findByBranchIdOrderByBusinessDateDesc(branchId)
+            .firstOrNull { it.businessDate == businessDate }
+        if (sameDateDay != null) {
+            return sameDateDay
+        }
+
         val bday = BusinessDay(
             branchId = branchId,
-            businessDate = businessDate.toString(),
+            businessDate = businessDate,
             closingTimeSetting = "02:00",
             status = BusinessDayStatus.OPEN
         )

@@ -6,11 +6,15 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.time.Instant
 
 @SpringBootTest
 @ActiveProfiles("test")
+// Categories here reference a branch that was never created ("branch-qr-test"). Every other
+// test class in this suite rolls back, so do the same: the fixtures are scaffolding, not the subject.
+@Transactional
 class QrOrderServiceTest {
 
     @Autowired
@@ -159,8 +163,9 @@ class QrOrderServiceTest {
 
         val product = menu.categories[0].products[0]
         assertEquals("วากิว A5 สไลซ์", product.name)
-        // Price should reflect the scheduled branch price override (499.00) rather than basePrice (590.00)
-        assertEquals(BigDecimal("499.00"), product.price)
+        // Price should reflect the scheduled branch price override (499.00) rather than basePrice (590.00).
+        // Money columns are NUMERIC(12,4), so reads come back at 4 decimal places.
+        assertEquals(BigDecimal("499.0000"), product.price)
         assertTrue(product.isAvailable)
     }
 

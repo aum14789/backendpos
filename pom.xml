@@ -119,9 +119,16 @@
 			<artifactId>kotlin-test-junit5</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!--
+			Real PostgreSQL for tests. The production baseline is PostgreSQL-only
+			DDL (CREATE EXTENSION, ON CONFLICT ... DO UPDATE, NULLS LAST), so an
+			in-memory substitute cannot execute it. Embedded PostgreSQL lets the
+			test suite run the same engine, schema and SQL as production.
+		-->
 		<dependency>
-			<groupId>com.h2database</groupId>
-			<artifactId>h2</artifactId>
+			<groupId>io.zonky.test</groupId>
+			<artifactId>embedded-postgres</artifactId>
+			<version>2.0.7</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
@@ -138,7 +145,12 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
-					<reuseForks>false</reuseForks>
+					<!--
+						Share one JVM across test classes so the embedded PostgreSQL
+						instance and the Flyway baseline are paid for once instead of
+						once per class.
+					-->
+					<reuseForks>true</reuseForks>
 				</configuration>
 			</plugin>
 			<plugin>

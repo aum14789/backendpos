@@ -13,6 +13,9 @@ import java.io.File
 import java.net.URI
 import javax.sql.DataSource
 
+/** The unresolvable placeholder `application.yml` falls back to when DATABASE_URL is absent. */
+private const val UNCONFIGURED_DATASOURCE_URL = "jdbc:postgresql://localhost:5432/neondb"
+
 @Configuration
 class DatabaseConfig {
 
@@ -28,8 +31,11 @@ class DatabaseConfig {
     private var configuredPassword: String = ""
 
     private fun resolveDatabaseUrl(): String {
-        // 0. If H2 in-memory (e.g. during test profile), prioritize it immediately
-        if (rawDatasourceUrl.startsWith("jdbc:h2:")) {
+        // 0. An explicitly configured datasource always wins. `application.yml`
+        //    already folds DATABASE_URL into this property, so a value set here is
+        //    a deliberate override (a test profile's own database, for instance)
+        //    and must not be silently replaced by the .env file below.
+        if (rawDatasourceUrl.isNotBlank() && rawDatasourceUrl != UNCONFIGURED_DATASOURCE_URL) {
             return rawDatasourceUrl
         }
 
@@ -58,30 +64,14 @@ class DatabaseConfig {
             }
         }
 
-        // 3. Check spring property (if not the localhost default)
-        if (rawDatasourceUrl.isNotBlank() && !rawDatasourceUrl.contains("localhost:5432")) {
-            return rawDatasourceUrl
-        }
-
-        // 4. Default fallback when neither DATABASE_URL env nor .env is present
-        return rawDatasourceUrl.ifBlank { "jdbc:postgresql://localhost:5432/neondb" }
+        // 3. Default fallback when neither DATABASE_URL env nor .env is present
+        return rawDatasourceUrl.ifBlank { UNCONFIGURED_DATASOURCE_URL }
     }
 
     @Bean
     @Primary
     fun dataSource(): DataSource {
         val rawUrl = resolveDatabaseUrl()
-
-        // If H2 in-memory (e.g. during test profile)
-        if (rawUrl.startsWith("jdbc:h2:")) {
-            val config = HikariConfig().apply {
-                jdbcUrl = rawUrl
-                driverClassName = "org.h2.Driver"
-                username = configuredUsername.ifBlank { "sa" }
-                password = configuredPassword
-            }
-            return HikariDataSource(config)
-        }
 
         // Parse PostgreSQL URI if in URI format (e.g. postgresql://user:pass@host:port/db?params)
         var username = configuredUsername

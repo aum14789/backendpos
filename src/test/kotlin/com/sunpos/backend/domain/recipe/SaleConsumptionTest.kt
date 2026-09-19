@@ -9,6 +9,7 @@ import com.sunpos.backend.domain.order.CreateOrderRequest
 import com.sunpos.backend.domain.order.OrderItemRequest
 import com.sunpos.backend.domain.order.OrderService
 import com.sunpos.backend.domain.businessday.BusinessDayService
+import com.sunpos.backend.domain.organization.BranchRepository
 import com.sunpos.backend.domain.payment.PaymentService
 import com.sunpos.backend.domain.payment.PaymentMethod
 import com.sunpos.backend.domain.payment.PaymentRequestDto
@@ -51,9 +52,25 @@ class SaleConsumptionTest {
     @Autowired
     private lateinit var businessDayService: BusinessDayService
 
+    /**
+     * The baseline migration seeds `branch-001` and leaves its status at the column default,
+     * PRE_OPENING. [com.sunpos.backend.domain.recipe.InventoryEodConsumptionService] deliberately
+     * skips stock deduction for a branch that has not opened yet, so a test that asserts real
+     * end-of-day consumption has to put the branch into an operational state first.
+     */
+    private fun markBranchOperational(branchId: String) {
+        val branches = applicationContext.getBean(BranchRepository::class.java)
+        branches.findById(branchId).ifPresent { branch ->
+            branch.status = "OPEN"
+            branches.save(branch)
+        }
+    }
+
     @Test
     fun `test sale order completion triggers recipe ingredient consumption and is idempotent`() {
         val pork = inventoryService.createInventoryItem(InventoryItem(sku = "RAW-PORK-SALE", name = "Raw Pork", unit = "kg", baseUnit = "g"))
+
+        markBranchOperational("branch-001")
 
         // Create and open Business Day
         val bday = businessDayService.getOrCreateOpenBusinessDay("branch-001")
@@ -117,12 +134,23 @@ class SaleConsumptionTest {
     fun `test comprehensive end-to-end business EOD scenario`() {
         val pork = inventoryService.createInventoryItem(InventoryItem(sku = "RAW-PORK-E2E", name = "Raw Pork", unit = "kg", baseUnit = "g"))
 
+        markBranchOperational("branch-001")
+
         // 1. Open Business Day
         val bday = businessDayService.getOrCreateOpenBusinessDay("branch-001")
         assertEquals(com.sunpos.backend.domain.businessday.BusinessDayStatus.OPEN, bday.status)
 
-        // Seed Warehouse for branch-001
         val warehouseRepository = applicationContext.getBean(com.sunpos.backend.domain.inventory.WarehouseRepository::class.java)
+
+        // branch-001 ships with a seeded main warehouse (wh-branch-001), and end-of-day consumption
+        // runs once for every main warehouse of the branch. Retire the seeded one so this scenario
+        // deducts from exactly the warehouse it asserts on.
+        warehouseRepository.findById("wh-branch-001").ifPresent { seeded ->
+            seeded.isActive = false
+            warehouseRepository.save(seeded)
+        }
+
+        // Seed Warehouse for branch-001
         warehouseRepository.save(com.sunpos.backend.domain.inventory.Warehouse(id = "wh-sukhumvit", branchId = "branch-001", name = "Sukhumvit Warehouse", code = "WH-SUK-01"))
 
         // Setup pork stock in wh-sukhumvit: 10 kg

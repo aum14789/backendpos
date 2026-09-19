@@ -363,6 +363,18 @@ abstract class JdbcRepository<T : Any>(
         return entity
     }
 
+    /**
+     * Drops this repository's in-memory fallback cache.
+     *
+     * The cache is what makes the repository usable when the database is unreachable or
+     * when a test stubs out `JdbcTemplate`. It is keyed by id and never expires, so a
+     * process that outlives a data reset (a test JVM, for instance) would otherwise keep
+     * serving rows that no longer exist.
+     */
+    open fun clearLocalCache() {
+        localCache.clear()
+    }
+
     open fun saveAll(entities: Iterable<T>): List<T> {
         val list = entities.toList()
         list.forEach { save(it) }

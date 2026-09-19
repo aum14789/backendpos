@@ -14,7 +14,7 @@ enum class BusinessDayStatus {
 class BusinessDay(
     val id: String = UUID.randomUUID().toString(),
     var branchId: String = "",
-    var businessDate: String = LocalDate.now().toString(), // Stored as ISO-8601 string for Firestore compatibility
+    var businessDate: LocalDate = LocalDate.now(), // DATE column in Postgres (was an ISO-8601 String under Firestore)
     var closingTimeSetting: String = "02:00",
     val openedAt: Instant = Instant.now(),
     var closedAt: Instant? = null,

@@ -12,10 +12,14 @@ import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
+import org.springframework.transaction.annotation.Transactional
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+// Fixtures reference a brand that does not exist ("BRD-01"). Every other test class in this
+// suite rolls back, so do the same here: the fixtures are scaffolding, not the subject.
+@Transactional
 class SecurityAndCorsTest {
 
     @Autowired

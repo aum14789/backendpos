@@ -59,7 +59,7 @@ class OrderServiceTest {
         businessDayRepository.save(
             BusinessDay(
                 branchId = branchId,
-                businessDate = LocalDate.now().toString(),
+                businessDate = LocalDate.now(),
                 status = BusinessDayStatus.OPEN
             )
         )

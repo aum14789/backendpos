@@ -354,7 +354,12 @@ class CouponService(
         }
 
         // 7. Calculate Discount Amount
-        val effectiveType = if (linkedPromo != null && coupon.value == BigDecimal.ZERO) {
+        // `coupon.value` comes back from NUMERIC(12,4) as `0.0000`, and BigDecimal.equals
+        // compares scale as well as magnitude -- so `coupon.value == BigDecimal.ZERO` is
+        // false for a coupon that has no value of its own. Compare by value instead, or a
+        // fixed-amount coupon linked to a promotion silently discounts nothing.
+        val couponHasOwnValue = coupon.value.compareTo(BigDecimal.ZERO) != 0
+        val effectiveType = if (linkedPromo != null && !couponHasOwnValue) {
             when (linkedPromo.promoType) {
                 PromotionType.PERCENTAGE -> CouponType.PERCENT
                 else -> CouponType.FIXED
@@ -363,7 +368,7 @@ class CouponService(
             coupon.type
         }
 
-        val effectiveValue = if (linkedPromo != null && coupon.value == BigDecimal.ZERO) {
+        val effectiveValue = if (linkedPromo != null && !couponHasOwnValue) {
             when (linkedPromo.promoType) {
                 PromotionType.PERCENTAGE -> linkedPromo.discountRate
                 else -> linkedPromo.discountAmount

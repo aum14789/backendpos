@@ -638,15 +638,25 @@ class CrmService(
 
     // ── 7. Loyalty Points Calculations & Ledger ──
 
-    fun calculatePointsBalance(customerId: String): BigDecimal {
-        val ledgers = pointLedgerRepository.findByCustomerIdOrderByCreatedAtDesc(customerId)
-        if (ledgers.isEmpty()) return BigDecimal.ZERO.setScale(SCALE, ROUNDING)
-        return ledgers.first().balanceAfter.setScale(SCALE, ROUNDING)
-    }
+    /**
+     * A customer's balance is the sum of every signed ledger entry (EARN positive,
+     * REDEEM negative, ADJUST and REVERSE carry their own sign).
+     *
+     * It used to be "whatever the newest row's `balanceAfter` says". `created_at` only
+     * has microsecond precision, so two entries written in the same instant -- a redeem
+     * issued right after an earn, for example -- sort arbitrarily, and the balance read
+     * back was the pre-redeem one. Replaying the entries by value is order-independent
+     * and cannot drift from the ledger it is derived from.
+     */
+    private fun balanceOf(ledgers: List<PointLedger>): BigDecimal =
+        ledgers.fold(BigDecimal.ZERO) { acc, l -> acc.add(l.points) }.setScale(SCALE, ROUNDING)
+
+    fun calculatePointsBalance(customerId: String): BigDecimal =
+        balanceOf(pointLedgerRepository.findByCustomerIdOrderByCreatedAtDesc(customerId))
 
     fun getPointBalanceDetails(customerId: String): PointBalanceResponseDto {
         val ledgers = pointLedgerRepository.findByCustomerIdOrderByCreatedAtDesc(customerId)
-        val currentBal = if (ledgers.isEmpty()) BigDecimal.ZERO.setScale(SCALE, ROUNDING) else ledgers.first().balanceAfter.setScale(SCALE, ROUNDING)
+        val currentBal = balanceOf(ledgers)
         val totalEarned = ledgers
             .filter { it.transactionType == PointTransactionType.EARN || (it.transactionType == PointTransactionType.ADJUST && it.points > BigDecimal.ZERO) }
             .fold(BigDecimal.ZERO) { acc, l -> acc.add(l.points) }
