@@ -40,8 +40,6 @@ class BackofficeApiControllerTests {
 
     private lateinit var buffetPromotionRepository: BuffetPromotionRepository
     private lateinit var buffetPromotionMenuItemRepository: BuffetPromotionMenuItemRepository
-    private lateinit var buffetTierRepository: BuffetPromotionTierRepository
-    private lateinit var buffetTierMenuItemRepository: BuffetTierMenuItemRepository
     private lateinit var buffetSessionRepository: BuffetSessionRepository
     private lateinit var buffetService: BuffetService
     private lateinit var buffetController: BuffetController
@@ -91,12 +89,9 @@ class BackofficeApiControllerTests {
         // Buffet mocks
         buffetPromotionRepository = mock(BuffetPromotionRepository::class.java)
         buffetPromotionMenuItemRepository = mock(BuffetPromotionMenuItemRepository::class.java)
-        buffetTierRepository = mock(BuffetPromotionTierRepository::class.java)
-        buffetTierMenuItemRepository = mock(BuffetTierMenuItemRepository::class.java)
         buffetSessionRepository = mock(BuffetSessionRepository::class.java)
         buffetService = BuffetService(
             buffetPromotionRepository, buffetPromotionMenuItemRepository,
-            buffetTierRepository, buffetTierMenuItemRepository,
             buffetSessionRepository, branchRepository, menuItemRepository
         )
         buffetController = BuffetController(buffetService)

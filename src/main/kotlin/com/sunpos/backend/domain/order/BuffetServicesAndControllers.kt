@@ -57,27 +57,6 @@ class BuffetPromotionMenuItemRepository(jdbcTemplate: JdbcTemplate) : JdbcReposi
 }
 
 @Repository
-class BuffetPromotionTierRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<BuffetPromotionTier>(jdbcTemplate, "buffet_promotion_tiers", BuffetPromotionTier::class.java) {
-    fun findByBranchIdAndIsActiveTrue(branchId: String): List<BuffetPromotionTier> =
-        findByFields(mapOf("branchId" to branchId, "isActive" to true))
-    fun findByBrandIdAndIsActiveTrue(brandId: String): List<BuffetPromotionTier> =
-        findByFields(mapOf("brandId" to brandId, "isActive" to true))
-    fun findByPromotionIdAndIsActiveTrue(promotionId: String): List<BuffetPromotionTier> =
-        findByFields(mapOf("promotionId" to promotionId, "isActive" to true))
-}
-
-@Repository
-class BuffetTierMenuItemRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<BuffetTierMenuItem>(jdbcTemplate, "buffet_tier_menu_items", BuffetTierMenuItem::class.java) {
-    fun findMenuItemIdsByTierId(tierId: String): List<String> =
-        findByField("buffetTierId", tierId).map { it.menuItemId }
-
-    fun deleteByIdBuffetTierId(tierId: String) {
-        val list = findByField("buffetTierId", tierId)
-        list.forEach { deleteById(it.id) }
-    }
-}
-
-@Repository
 class BuffetSessionRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<BuffetSession>(jdbcTemplate, "buffet_sessions", BuffetSession::class.java) {
     fun findByOrderId(orderId: String): BuffetSession? =
         findOneByField("orderId", orderId).orElse(null)
@@ -93,13 +72,10 @@ class BuffetSessionRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<Buffe
 class BuffetService(
     private val promotionRepository: BuffetPromotionRepository,
     private val promotionMenuItemRepository: BuffetPromotionMenuItemRepository,
-    private val tierRepository: BuffetPromotionTierRepository,
-    private val tierMenuItemRepository: BuffetTierMenuItemRepository,
     private val sessionRepository: BuffetSessionRepository,
     private val branchRepository: BranchRepository,
     private val menuItemRepository: MenuItemRepository,
-    private val categoryRepository: MenuCategoryRepository? = null,
-    private val jdbcTemplate: JdbcTemplate? = null
+    private val categoryRepository: MenuCategoryRepository? = null
 ) {
 
     // ── Multi-Brand Buffet Promotion APIs ──
@@ -148,6 +124,7 @@ class BuffetService(
     fun getMenuItemsForPromotion(promotionId: String): List<BuffetPromotionMenuItemDetailDto> {
         val links = promotionMenuItemRepository.findByPromotionId(promotionId)
         if (links.isEmpty()) return emptyList()
+
         val itemIds = links.map { it.menuItemId }
         val items = menuItemRepository.findAllById(itemIds).filter { it.isActive }.associateBy { it.id }
         val categoryMap = categoryRepository?.findAll()?.associateBy { it.id } ?: emptyMap()
@@ -192,7 +169,7 @@ class BuffetService(
     }
 
     /**
-     * Backoffice: Create a multi-brand buffet promotion.
+     * Backoffice: Create a multi-brand buffet promotion cleanly without legacy duplicate tables.
      */
     @Transactional
     fun createPromotion(dto: CreateBuffetPromotionDto, createdBy: String? = null): BuffetPromotionResponseDto {
@@ -231,34 +208,6 @@ class BuffetService(
             promotionMenuItemRepository.save(link)
         }
 
-        // Harmonize with BuffetPromotionTier so both models remain 100% unified
-        jdbcTemplate?.update(
-            """
-            INSERT INTO promotions (id, code, name, promo_type, start_at, end_at, brand_id, branch_id)
-            VALUES (?, ?, ?, 'BUFFET', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '10 years', ?, ?)
-            ON CONFLICT (id) DO NOTHING
-            """.trimIndent(),
-            promo.id, "BUFFET-${promo.id}", promo.name,
-            if (promo.brandId.isNotBlank()) promo.brandId else null,
-            if (!promo.branchId.isNullOrBlank()) promo.branchId else null
-        )
-
-        val tier = BuffetPromotionTier(
-            id = promo.id,
-            promotionId = promo.id,
-            name = promo.name,
-            adultPrice = promo.pricePerPerson,
-            childPrice = promo.pricePerPerson.multiply(BigDecimal("0.5")),
-            timeLimitMinutes = promo.durationMinutes,
-            brandId = promo.brandId,
-            branchId = promo.branchId,
-            isActive = true
-        )
-        tierRepository.save(tier)
-        for (item in itemsToSave) {
-            tierMenuItemRepository.save(BuffetTierMenuItem(buffetTierId = tier.id, menuItemId = item.menuItemId))
-        }
-
         return toPromotionResponseDto(promo, itemsToSave.size)
     }
 
@@ -295,22 +244,6 @@ class BuffetService(
                 )
                 promotionMenuItemRepository.save(link)
             }
-
-            // Sync with tier
-            tierMenuItemRepository.deleteByIdBuffetTierId(promo.id)
-            for (item in itemsToSave) {
-                tierMenuItemRepository.save(BuffetTierMenuItem(buffetTierId = promo.id, menuItemId = item.menuItemId))
-            }
-        }
-
-        // Sync tier metadata
-        tierRepository.findById(promo.id).ifPresent { t ->
-            t.name = promo.name
-            t.adultPrice = promo.pricePerPerson
-            t.childPrice = promo.pricePerPerson.multiply(BigDecimal("0.5"))
-            t.timeLimitMinutes = promo.durationMinutes
-            t.isActive = promo.status == BuffetPromotionStatus.ACTIVE
-            tierRepository.save(t)
         }
 
         val count = promotionMenuItemRepository.findMenuItemIdsByPromotionId(promo.id).size
@@ -358,89 +291,9 @@ class BuffetService(
         return toSessionResponseDto(session, promo.name)
     }
 
-    // ── Tier APIs (Legacy & Multi-Tier) ──
-
-    @Transactional
-    fun createTier(dto: CreateBuffetTierDto): BuffetTierResponseDto {
-        jdbcTemplate?.update(
-            """
-            INSERT INTO promotions (id, code, name, promo_type, start_at, end_at, brand_id, branch_id)
-            VALUES (?, ?, ?, 'BUFFET', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '10 years', ?, ?)
-            ON CONFLICT (id) DO NOTHING
-            """.trimIndent(),
-            dto.promotionId, "BUFFET-${dto.promotionId}", dto.name,
-            if (!dto.brandId.isNullOrBlank()) dto.brandId else null,
-            if (!dto.branchId.isNullOrBlank()) dto.branchId else null
-        )
-
-        val tier = BuffetPromotionTier(
-            promotionId = dto.promotionId,
-            name = dto.name,
-            adultPrice = dto.adultPrice,
-            childPrice = dto.childPrice,
-            timeLimitMinutes = dto.timeLimitMinutes,
-            brandId = dto.brandId,
-            branchId = dto.branchId
-        )
-        tierRepository.save(tier)
-
-        for (menuItemId in dto.eligibleMenuItemIds) {
-            val link = BuffetTierMenuItem(
-                buffetTierId = tier.id,
-                menuItemId = menuItemId
-            )
-            tierMenuItemRepository.save(link)
-        }
-
-        return toTierResponseDto(tier, dto.eligibleMenuItemIds.size)
-    }
-
-    fun listTiersByBranch(branchId: String? = null): List<BuffetTierResponseDto> {
-        val tiers = if (!branchId.isNullOrBlank()) {
-            tierRepository.findByBranchIdAndIsActiveTrue(branchId)
-        } else {
-            tierRepository.findAll().filter { it.isActive }
-        }
-        return tiers.map { tier ->
-            val menuItemCount = tierMenuItemRepository.findMenuItemIdsByTierId(tier.id).size
-            toTierResponseDto(tier, menuItemCount)
-        }
-    }
-
-    fun getEligibleMenuItemIds(tierId: String): List<String> {
-        return tierMenuItemRepository.findMenuItemIdsByTierId(tierId)
-    }
-
-    @Transactional
-    fun startSession(dto: StartBuffetSessionDto): BuffetSessionResponseDto {
-        val tier = tierRepository.findById(dto.buffetTierId)
-            .orElseThrow { IllegalArgumentException("Buffet tier not found: ${dto.buffetTierId}") }
-
-        val now = Instant.now()
-        val expiresAt = now.plusSeconds(tier.timeLimitMinutes.toLong() * 60)
-
-        val session = BuffetSession(
-            orderId = dto.orderId,
-            branchId = dto.branchId,
-            buffetTierId = dto.buffetTierId,
-            adultCount = dto.adultCount,
-            childCount = dto.childCount,
-            adultPriceSnapshot = tier.adultPrice,
-            childPriceSnapshot = tier.childPrice,
-            timeLimitMinutes = tier.timeLimitMinutes,
-            startedAt = now,
-            expiresAt = expiresAt,
-            createdBy = dto.createdBy
-        )
-        sessionRepository.save(session)
-
-        return toSessionResponseDto(session, tier.name)
-    }
-
     fun getSessionByOrder(orderId: String): BuffetSessionResponseDto? {
         val session = sessionRepository.findByOrderId(orderId) ?: return null
-        val promoName = promotionRepository.findById(session.buffetTierId).map { it.name }
-            .orElseGet { tierRepository.findById(session.buffetTierId).map { it.name }.orElse("Buffet") }
+        val promoName = promotionRepository.findById(session.buffetTierId).map { it.name }.orElse("Buffet")
         return toSessionResponseDto(session, promoName)
     }
 
@@ -452,8 +305,7 @@ class BuffetService(
         session.updatedAt = Instant.now()
         sessionRepository.save(session)
 
-        val promoName = promotionRepository.findById(session.buffetTierId).map { it.name }
-            .orElseGet { tierRepository.findById(session.buffetTierId).map { it.name }.orElse("Buffet") }
+        val promoName = promotionRepository.findById(session.buffetTierId).map { it.name }.orElse("Buffet")
         return toSessionResponseDto(session, promoName)
     }
 
@@ -481,19 +333,6 @@ class BuffetService(
         durationMinutes = promo.durationMinutes,
         status = promo.status,
         eligibleMenuItemCount = itemCount
-    )
-
-    private fun toTierResponseDto(tier: BuffetPromotionTier, menuItemCount: Int) = BuffetTierResponseDto(
-        id = tier.id,
-        promotionId = tier.promotionId,
-        name = tier.name,
-        adultPrice = tier.adultPrice,
-        childPrice = tier.childPrice,
-        timeLimitMinutes = tier.timeLimitMinutes,
-        brandId = tier.brandId,
-        branchId = tier.branchId,
-        isActive = tier.isActive,
-        eligibleMenuItemCount = menuItemCount
     )
 
     private fun toSessionResponseDto(session: BuffetSession, tierName: String) = BuffetSessionResponseDto(
@@ -576,26 +415,9 @@ class BuffetController(
         return ApiResponse.success(buffetService.startPromotionSession(dto), "Buffet session started")
     }
 
-    // ── Tier Endpoints ──
-
-    @PostMapping("/tiers")
-    fun createTier(@RequestBody dto: CreateBuffetTierDto): ApiResponse<BuffetTierResponseDto> {
-        return ApiResponse.success(buffetService.createTier(dto), "Buffet tier created")
-    }
-
-    @GetMapping("/tiers")
-    fun listTiers(@RequestParam(required = false) branchId: String?): ApiResponse<List<BuffetTierResponseDto>> {
-        return ApiResponse.success(buffetService.listTiersByBranch(branchId))
-    }
-
-    @GetMapping("/tiers/{tierId}/menu-items")
-    fun getEligibleMenuItems(@PathVariable tierId: String): ApiResponse<List<String>> {
-        return ApiResponse.success(buffetService.getEligibleMenuItemIds(tierId))
-    }
-
     @PostMapping("/sessions")
-    fun startSession(@RequestBody dto: StartBuffetSessionDto): ApiResponse<BuffetSessionResponseDto> {
-        return ApiResponse.success(buffetService.startSession(dto), "Buffet session started")
+    fun startSession(@RequestBody dto: StartBuffetPromotionSessionDto): ApiResponse<BuffetSessionResponseDto> {
+        return ApiResponse.success(buffetService.startPromotionSession(dto), "Buffet session started")
     }
 
     @GetMapping("/sessions/order/{orderId}")

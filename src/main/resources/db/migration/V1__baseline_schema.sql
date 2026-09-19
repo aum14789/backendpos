@@ -118,21 +118,6 @@ CREATE TABLE IF NOT EXISTS brands (
     CONSTRAINT brands_code_key UNIQUE (code)
 );
 
--- Table: buffet_package_recipes
-CREATE TABLE IF NOT EXISTS buffet_package_recipes (
-    id VARCHAR(36) NOT NULL,
-    buffet_tier_id VARCHAR(36) NOT NULL,
-    inventory_item_id VARCHAR(36) NOT NULL,
-    quantity_per_head NUMERIC(12, 4) NOT NULL,
-    unit VARCHAR(30) NOT NULL,
-    waste_percentage NUMERIC(5, 2) DEFAULT 0 NOT NULL,
-    notes VARCHAR(500),
-    is_active BOOLEAN DEFAULT true NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    CONSTRAINT pk_buffet_package_recipes PRIMARY KEY (id),
-    CONSTRAINT buffet_package_recipes_buffet_tier_id_inventory_item_id_key UNIQUE (buffet_tier_id, inventory_item_id)
-);
-
 -- Table: buffet_promotion_menu_items
 CREATE TABLE IF NOT EXISTS buffet_promotion_menu_items (
     id VARCHAR(100) NOT NULL,
@@ -144,21 +129,18 @@ CREATE TABLE IF NOT EXISTS buffet_promotion_menu_items (
     CONSTRAINT uq_buffet_promotion_menu_items UNIQUE (promotion_id, menu_item_id)
 );
 
--- Table: buffet_promotion_tiers
-CREATE TABLE IF NOT EXISTS buffet_promotion_tiers (
+-- Table: buffet_package_recipes
+CREATE TABLE IF NOT EXISTS buffet_package_recipes (
     id VARCHAR(36) NOT NULL,
-    promotion_id VARCHAR(36) NOT NULL,
-    name VARCHAR(200) NOT NULL,
-    adult_price NUMERIC(15, 4) DEFAULT 0 NOT NULL,
-    child_price NUMERIC(15, 4) DEFAULT 0 NOT NULL,
-    time_limit_minutes INTEGER DEFAULT 90 NOT NULL,
-    brand_id VARCHAR(36),
-    branch_id VARCHAR(36),
+    buffet_tier_id VARCHAR(36) NOT NULL,
+    inventory_item_id VARCHAR(36) NOT NULL,
+    quantity_per_head NUMERIC(15, 4) DEFAULT 0 NOT NULL,
+    unit VARCHAR(50) NOT NULL,
+    waste_percentage NUMERIC(5, 2) DEFAULT 0 NOT NULL,
+    notes TEXT,
     is_active BOOLEAN DEFAULT true NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    version BIGINT DEFAULT 0 NOT NULL,
-    CONSTRAINT pk_buffet_promotion_tiers PRIMARY KEY (id)
+    CONSTRAINT pk_buffet_package_recipes PRIMARY KEY (id)
 );
 
 -- Table: buffet_promotions
@@ -198,15 +180,6 @@ CREATE TABLE IF NOT EXISTS buffet_sessions (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
     version BIGINT DEFAULT 0 NOT NULL,
     CONSTRAINT pk_buffet_sessions PRIMARY KEY (id)
-);
-
--- Table: buffet_tier_menu_items
-CREATE TABLE IF NOT EXISTS buffet_tier_menu_items (
-    id VARCHAR(100) NOT NULL,
-    buffet_tier_id VARCHAR(36) NOT NULL,
-    menu_item_id VARCHAR(36) NOT NULL,
-    CONSTRAINT pk_buffet_tier_menu_items PRIMARY KEY (id),
-    CONSTRAINT uq_buffet_tier_menu_items UNIQUE (buffet_tier_id, menu_item_id)
 );
 
 -- Table: business_days
@@ -1731,7 +1704,7 @@ DO $$ BEGIN
 END $$;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'buffet_package_recipes_buffet_tier_id_fkey') THEN
-    ALTER TABLE buffet_package_recipes ADD CONSTRAINT buffet_package_recipes_buffet_tier_id_fkey FOREIGN KEY (buffet_tier_id) REFERENCES buffet_promotion_tiers(id);
+    ALTER TABLE buffet_package_recipes ADD CONSTRAINT buffet_package_recipes_buffet_tier_id_fkey FOREIGN KEY (buffet_tier_id) REFERENCES buffet_promotions(id);
   END IF;
 END $$;
 DO $$ BEGIN
@@ -1747,11 +1720,6 @@ END $$;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'buffet_promotion_menu_items_promotion_id_fkey') THEN
     ALTER TABLE buffet_promotion_menu_items ADD CONSTRAINT buffet_promotion_menu_items_promotion_id_fkey FOREIGN KEY (promotion_id) REFERENCES buffet_promotions(id);
-  END IF;
-END $$;
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'buffet_promotion_tiers_promotion_id_fkey') THEN
-    ALTER TABLE buffet_promotion_tiers ADD CONSTRAINT buffet_promotion_tiers_promotion_id_fkey FOREIGN KEY (promotion_id) REFERENCES promotions(id);
   END IF;
 END $$;
 DO $$ BEGIN
@@ -1771,22 +1739,12 @@ DO $$ BEGIN
 END $$;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'buffet_sessions_buffet_tier_id_fkey') THEN
-    ALTER TABLE buffet_sessions ADD CONSTRAINT buffet_sessions_buffet_tier_id_fkey FOREIGN KEY (buffet_tier_id) REFERENCES buffet_promotion_tiers(id);
+    ALTER TABLE buffet_sessions ADD CONSTRAINT buffet_sessions_buffet_tier_id_fkey FOREIGN KEY (buffet_tier_id) REFERENCES buffet_promotions(id);
   END IF;
 END $$;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'buffet_sessions_order_id_fkey') THEN
     ALTER TABLE buffet_sessions ADD CONSTRAINT buffet_sessions_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders(id);
-  END IF;
-END $$;
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'buffet_tier_menu_items_buffet_tier_id_fkey') THEN
-    ALTER TABLE buffet_tier_menu_items ADD CONSTRAINT buffet_tier_menu_items_buffet_tier_id_fkey FOREIGN KEY (buffet_tier_id) REFERENCES buffet_promotion_tiers(id);
-  END IF;
-END $$;
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'buffet_tier_menu_items_menu_item_id_fkey') THEN
-    ALTER TABLE buffet_tier_menu_items ADD CONSTRAINT buffet_tier_menu_items_menu_item_id_fkey FOREIGN KEY (menu_item_id) REFERENCES menu_items(id);
   END IF;
 END $$;
 DO $$ BEGIN
@@ -2439,11 +2397,7 @@ CREATE INDEX idx_boms_finished_item ON public.boms USING btree (finished_invento
 CREATE INDEX idx_branches_brand ON public.branches USING btree (brand_id);
 CREATE INDEX idx_branches_company ON public.branches USING btree (company_id);
 CREATE INDEX idx_brands_company ON public.brands USING btree (company_id);
-CREATE INDEX idx_buffet_pkg_recipe_item ON public.buffet_package_recipes USING btree (inventory_item_id);
-CREATE INDEX idx_buffet_pkg_recipe_tier ON public.buffet_package_recipes USING btree (buffet_tier_id);
 CREATE INDEX idx_buffet_promo_menu_item ON public.buffet_promotion_menu_items USING btree (promotion_id);
-CREATE INDEX idx_buffet_tiers_brand ON public.buffet_promotion_tiers USING btree (brand_id);
-CREATE INDEX idx_buffet_tiers_promotion ON public.buffet_promotion_tiers USING btree (promotion_id);
 CREATE INDEX idx_buffet_promotions_branch_status ON public.buffet_promotions USING btree (branch_id, status);
 CREATE INDEX idx_buffet_promotions_brand_status ON public.buffet_promotions USING btree (brand_id, status);
 CREATE INDEX idx_buffet_sessions_branch_status ON public.buffet_sessions USING btree (branch_id, status);

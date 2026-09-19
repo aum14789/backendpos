@@ -37,7 +37,8 @@ class BusinessDayService(
     private val businessDayResolver: BusinessDayResolver,
     private val clock: BusinessDayClock,
     private val inventoryEodConsumptionService: com.sunpos.backend.domain.recipe.InventoryEodConsumptionService,
-    private val warehouseRepository: com.sunpos.backend.domain.inventory.WarehouseRepository
+    private val warehouseRepository: com.sunpos.backend.domain.inventory.WarehouseRepository,
+    private val shiftRepository: com.sunpos.backend.domain.shift.CashierShiftRepository? = null
 ) {
     companion object {
         const val SCALE = 4
@@ -82,6 +83,28 @@ class BusinessDayService(
         // Idempotent & Resumable EOD calculation
         day.status = BusinessDayStatus.PROCESSING
         businessDayRepository.save(day)
+
+        // 1. Settle all open cashier shifts for this branch atomically
+        if (shiftRepository != null) {
+            val openShifts = shiftRepository.findByBranchId(branchId)
+                .filter { it.status == com.sunpos.backend.domain.shift.ShiftStatus.OPEN }
+            for (shift in openShifts) {
+                val expected = shift.openingCash
+                    .add(shift.cashSales)
+                    .add(shift.cashIn)
+                    .subtract(shift.cashOut)
+                    .subtract(shift.refundCash)
+                    .setScale(SCALE, ROUNDING)
+                shift.expectedCash = expected
+                shift.actualCash = expected
+                shift.variance = BigDecimal.ZERO
+                shift.varianceType = com.sunpos.backend.domain.shift.VarianceType.ZERO
+                shift.closingNotes = "Auto-settled at Business Day EOD by ${closedBy ?: "system"}"
+                shift.status = com.sunpos.backend.domain.shift.ShiftStatus.CLOSED
+                shift.closedAt = Instant.now()
+                shiftRepository.save(shift)
+            }
+        }
 
         // Trigger stock consumption strictly for the single primary Main Storage Warehouse (exclude Waste & Destroy)
         val eligibleWarehouses = warehouseRepository.findByBranchId(branchId)

@@ -266,8 +266,6 @@ class SyncService(
     private val branchRepository: com.sunpos.backend.domain.organization.BranchRepository? = null,
     private val zoneRepository: com.sunpos.backend.domain.table.ZoneRepository? = null,
     private val tableRepository: com.sunpos.backend.domain.table.TableRepository? = null,
-    private val buffetPromotionTierRepository: com.sunpos.backend.domain.order.BuffetPromotionTierRepository? = null,
-    private val buffetTierMenuItemRepository: com.sunpos.backend.domain.order.BuffetTierMenuItemRepository? = null,
     private val buffetPromotionRepository: com.sunpos.backend.domain.order.BuffetPromotionRepository? = null,
     private val buffetPromotionMenuItemRepository: com.sunpos.backend.domain.order.BuffetPromotionMenuItemRepository? = null,
     private val promotionRepository: com.sunpos.backend.domain.promotion.PromotionRepository? = null,
@@ -691,33 +689,9 @@ class SyncService(
             )
         }
 
-        // 3. Buffet Tiers (Evaluated first to discover active buffet-included items)
+        // 3. Buffet Packages (Evaluated first to discover active buffet-included items)
         val buffetTiers = mutableListOf<SyncBuffetTierDto>()
-        if (buffetPromotionTierRepository != null) {
-            val rawTiers = buffetPromotionTierRepository.findByBranchIdAndIsActiveTrue(branchId).ifEmpty {
-                if (targetBrandId.isNotBlank()) {
-                    buffetPromotionTierRepository.findByBrandIdAndIsActiveTrue(targetBrandId)
-                } else {
-                    emptyList()
-                }
-            }
-            buffetTiers.addAll(rawTiers.map { bt ->
-                val eligibleItemIds = buffetTierMenuItemRepository?.findMenuItemIdsByTierId(bt.id) ?: emptyList()
-                SyncBuffetTierDto(
-                    tierId = bt.id,
-                    promotionId = bt.promotionId,
-                    name = bt.name,
-                    adultPrice = bt.adultPrice.multiply(BigDecimal("100")).toLong(),
-                    childPrice = bt.childPrice.multiply(BigDecimal("100")).toLong(),
-                    timeLimitMinutes = bt.timeLimitMinutes,
-                    brandId = bt.brandId,
-                    branchId = bt.branchId,
-                    isActive = bt.isActive,
-                    eligibleItemIds = eligibleItemIds
-                )
-            })
-        }
-        if (buffetTiers.isEmpty() && buffetPromotionRepository != null) {
+        if (buffetPromotionRepository != null) {
             val promos = buffetPromotionRepository.findPromotionsForBranch(targetBrandId, branchId, com.sunpos.backend.domain.order.BuffetPromotionStatus.ACTIVE)
             buffetTiers.addAll(promos.map { p ->
                 val eligibleItemIds = buffetPromotionMenuItemRepository?.findMenuItemIdsByPromotionId(p.id) ?: emptyList()

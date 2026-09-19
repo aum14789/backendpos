@@ -75,38 +75,6 @@ data class BuffetPromotionMenuItemDetailDto(
     val additionalPrice: BigDecimal = BigDecimal.ZERO
 )
 
-class BuffetPromotionTier(
-    val id: String = UUID.randomUUID().toString(),
-    var promotionId: String = "",
-    var name: String = "",
-    var adultPrice: BigDecimal = BigDecimal.ZERO,
-    var childPrice: BigDecimal = BigDecimal.ZERO,
-    var timeLimitMinutes: Int = 90,
-    var brandId: String? = null,
-    var branchId: String? = null,
-    var isActive: Boolean = true,
-    val createdAt: Instant = Instant.now(),
-    var updatedAt: Instant = Instant.now(),
-    var version: Long = 0
-)
-
-data class BuffetTierMenuItemId(
-    var buffetTierId: String = "",
-    var menuItemId: String = ""
-) : Serializable
-
-class BuffetTierMenuItem(
-    val id: String = UUID.randomUUID().toString(),
-    var buffetTierId: String = "",
-    var menuItemId: String = ""
-) {
-    constructor(buffetTierId: String, menuItemId: String) : this(
-        id = "${buffetTierId}_$menuItemId",
-        buffetTierId = buffetTierId,
-        menuItemId = menuItemId
-    )
-}
-
 enum class BuffetSessionStatus {
     ACTIVE,
     TIME_WARNING,
@@ -186,26 +154,6 @@ data class StartBuffetPromotionSessionDto(
     val createdBy: String? = null
 )
 
-data class CreateBuffetTierDto(
-    val promotionId: String = "",
-    val name: String = "",
-    val adultPrice: BigDecimal = BigDecimal.ZERO,
-    val childPrice: BigDecimal = BigDecimal.ZERO,
-    val timeLimitMinutes: Int = 90,
-    val brandId: String? = null,
-    val branchId: String? = null,
-    val eligibleMenuItemIds: List<String> = emptyList()
-)
-
-data class StartBuffetSessionDto(
-    val orderId: String = "",
-    val branchId: String = "",
-    val buffetTierId: String = "",
-    val adultCount: Int = 1,
-    val childCount: Int = 0,
-    val createdBy: String? = null
-)
-
 data class BuffetSessionResponseDto(
     val id: String = "",
     val orderId: String = "",
@@ -222,17 +170,4 @@ data class BuffetSessionResponseDto(
     val expiresAt: Instant = Instant.now(),
     val remainingMinutes: Long = 0,
     val status: BuffetSessionStatus = BuffetSessionStatus.ACTIVE
-)
-
-data class BuffetTierResponseDto(
-    val id: String = "",
-    val promotionId: String = "",
-    val name: String = "",
-    val adultPrice: BigDecimal = BigDecimal.ZERO,
-    val childPrice: BigDecimal = BigDecimal.ZERO,
-    val timeLimitMinutes: Int = 90,
-    val brandId: String? = null,
-    val branchId: String? = null,
-    val isActive: Boolean = true,
-    val eligibleMenuItemCount: Int = 0
 )
