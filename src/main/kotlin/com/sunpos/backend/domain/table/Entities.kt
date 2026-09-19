@@ -87,5 +87,8 @@ data class OpenSessionDto(
 
 data class MoveTableDto(
     val fromTableId: String = "",
-    val toTableId: String = ""
+    val toTableId: String = "",
+    val orderId: String? = null,
+    val reason: String? = null,
+    val transferredBy: String? = null
 )

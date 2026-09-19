@@ -86,7 +86,36 @@ class OrderItem(
     var recipeIdSnapshot: String? = null,
     var recipeVersionSnapshot: String? = null,
     var comboDefinitionIdSnapshot: String? = null,
+    var channel: String = "POS",
+    var isVoided: Boolean = false,
+    var status: String = "ACTIVE",
+    var voidedBy: String? = null,
+    var voidApprovedBy: String? = null,
+    var voidedAt: Instant? = null,
+    var voidReason: String? = null,
+    var isWaste: Boolean = false,
+    var orderedBy: String? = null,
+    var orderedAt: Instant? = null,
     val createdAt: Instant = Instant.now()
+)
+
+class TableTransferLog(
+    val id: String = UUID.randomUUID().toString(),
+    var orderId: String = "",
+    var fromTableId: String = "",
+    var toTableId: String = "",
+    var transferredBy: String? = null,
+    var transferredAt: Instant = Instant.now(),
+    var reason: String? = null
+)
+
+class BillCheckLog(
+    val id: String = UUID.randomUUID().toString(),
+    var orderId: String = "",
+    var checkSequence: Int = 1,
+    var checkedAt: Instant = Instant.now(),
+    var checkedBy: String? = null,
+    var snapshotTotalSatang: Long = 0L
 )
 
 class OrderItemModifier(

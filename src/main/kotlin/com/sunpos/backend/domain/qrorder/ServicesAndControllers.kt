@@ -578,7 +578,8 @@ class QrOrderService(
                 effectiveDate = item.effectiveDate,
                 expiryDate = item.expiryDate,
                 isDateActive = isDateActive,
-                dateStatusMessage = dateStatus
+                dateStatusMessage = dateStatus,
+                createdAt = item.createdAt
             )
         }
 
@@ -867,12 +868,21 @@ class PublicOrderController(
         @RequestHeader(value = "X-Session-Token", required = false) headerToken: String?
     ): org.springframework.http.ResponseEntity<Map<String, Any>> {
         val effectiveToken = token?.trim()?.ifBlank { null } ?: headerToken?.trim()?.ifBlank { null }
-        val isValid = if (qrTableSessionService != null && !effectiveToken.isNullOrBlank()) {
+        val activeSessionByToken = if (qrTableSessionService != null && !effectiveToken.isNullOrBlank()) {
+            qrTableSessionService.findActiveSessionByToken(effectiveToken).orElse(null)
+        } else null
+
+        val currentTableNumber = activeSessionByToken?.tableNumber ?: tableNumber
+        val isTransferred = activeSessionByToken != null && qrTableSessionService != null && !qrTableSessionService.tableNumbersMatch(tableNumber, activeSessionByToken.tableNumber)
+
+        val isValid = if (activeSessionByToken != null) {
+            true
+        } else if (qrTableSessionService != null && !effectiveToken.isNullOrBlank()) {
             qrTableSessionService.isSessionTokenValid(branchId, tableNumber, effectiveToken)
         } else {
             true
         }
-        val activeSession = qrTableSessionService?.getActiveSession(branchId, tableNumber)?.orElse(null)
+        val activeSession = activeSessionByToken ?: qrTableSessionService?.getActiveSession(branchId, tableNumber)?.orElse(null)
         val isTableOccupied = activeSession != null
 
         return if (!isValid || (!isTableOccupied && !effectiveToken.isNullOrBlank())) {
@@ -884,14 +894,19 @@ class PublicOrderController(
                 )
             )
         } else {
-            org.springframework.http.ResponseEntity.ok(
-                mapOf(
-                    "valid" to true,
-                    "active" to isTableOccupied,
-                    "tableNumber" to tableNumber,
-                    "branchId" to branchId
-                )
+            val responseMap = mutableMapOf<String, Any>(
+                "valid" to true,
+                "active" to isTableOccupied,
+                "tableNumber" to currentTableNumber,
+                "branchId" to branchId
             )
+            if (isTransferred) {
+                responseMap["transferred"] = true
+                responseMap["originalTableNumber"] = tableNumber
+                responseMap["newTableNumber"] = currentTableNumber
+                responseMap["message"] = "โต๊ะของท่านถูกย้ายไปยัง $currentTableNumber เรียบร้อยแล้ว"
+            }
+            org.springframework.http.ResponseEntity.ok(responseMap)
         }
     }
 

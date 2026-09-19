@@ -54,3 +54,52 @@ data class CrmAnalyticsDto(
     val totalPointsRedeemed: Long,
     val activeMemberCount: Long
 )
+
+data class VoidAuditItemDto(
+    val id: String,
+    val orderId: String,
+    val name: String,
+    val quantity: BigDecimal,
+    val unitPrice: BigDecimal,
+    val totalPrice: BigDecimal,
+    val voidedBy: String?,
+    val voidApprovedBy: String?,
+    val voidedAt: String?,
+    val voidReason: String?,
+    val isWaste: Boolean,
+    val orderedBy: String?,
+    val orderedAt: String?
+)
+
+data class VoidAuditReportDto(
+    val items: List<VoidAuditItemDto>,
+    val totalCount: Int,
+    val totalAmount: BigDecimal,
+    val wasteCount: Int,
+    val wasteAmount: BigDecimal,
+    val restockCount: Int,
+    val restockAmount: BigDecimal
+)
+
+data class TableTransferAuditDto(
+    val id: String,
+    val orderId: String,
+    val fromTableId: String,
+    val fromTableName: String,
+    val toTableId: String,
+    val toTableName: String,
+    val transferredBy: String?,
+    val transferredAt: String?,
+    val reason: String?
+)
+
+data class BillCheckAuditDto(
+    val id: String,
+    val orderId: String,
+    val checkSequence: Int,
+    val checkedAt: String?,
+    val checkedBy: String?,
+    val snapshotTotalSatang: Long,
+    val snapshotTotalBaht: BigDecimal
+)
+

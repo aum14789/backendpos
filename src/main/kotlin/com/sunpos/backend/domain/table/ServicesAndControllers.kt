@@ -286,6 +286,18 @@ class TableSessionService(
         fromTable.updatedAt = Instant.now()
         tableRepository.save(fromTable)
 
+        // 5. Record Table Transfer Audit Log (ADR 0029)
+        try {
+            val transferId = java.util.UUID.randomUUID().toString()
+            val orderId = dto.orderId ?: activeSessions.firstOrNull()?.id ?: ""
+            jdbcTemplate?.update(
+                "INSERT INTO table_transfer_logs (id, order_id, from_table_id, to_table_id, transferred_by, transferred_at, reason) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                transferId, orderId, dto.fromTableId, dto.toTableId, dto.transferredBy ?: "POS", java.sql.Timestamp.from(Instant.now()), dto.reason ?: "ลูกค้าย้ายโต๊ะ"
+            )
+        } catch (e: Exception) {
+            logger.warn("Failed to record table_transfer_log: {}", e.message)
+        }
+
         logger.info("Successfully moved table {} ({}) -> {} ({})",
             fromTable.nameNumber, dto.fromTableId, toTable.nameNumber, dto.toTableId)
 
@@ -294,12 +306,12 @@ class TableSessionService(
 }
 
 @RestController
-@RequestMapping("/api/v1/tables", "/api/v1/table")
+@RequestMapping("/api/v1/tables", "/api/v1/table", "/api/tables")
 class TableController(
     private val tableService: TableService,
     private val tableSessionService: TableSessionService
 ) {
-    @PostMapping("/move")
+    @PostMapping("/move", "/transfer")
     fun moveTable(@RequestBody dto: MoveTableDto): ApiResponse<RestaurantTable> {
         return ApiResponse.success(tableSessionService.moveTable(dto), "Table moved successfully")
     }

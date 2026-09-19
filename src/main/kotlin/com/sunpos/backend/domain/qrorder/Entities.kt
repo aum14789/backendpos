@@ -196,7 +196,8 @@ data class BrandQrItemDto(
     val effectiveDate: java.time.LocalDate? = null,
     val expiryDate: java.time.LocalDate? = null,
     val isDateActive: Boolean = true,
-    val dateStatusMessage: String? = null
+    val dateStatusMessage: String? = null,
+    val createdAt: java.time.Instant? = null
 )
 
 data class BrandQrMenuCatalogDto(

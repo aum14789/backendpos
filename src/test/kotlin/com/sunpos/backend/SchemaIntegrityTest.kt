@@ -36,7 +36,7 @@ class SchemaIntegrityTest {
                     continue
                 }
                 if (trimmed.startsWith("--") || trimmed.isBlank()) continue
-                if (Regex("^(CONSTRAINT|PRIMARY KEY|FOREIGN KEY|UNIQUE|CHECK)", RegexOption.IGNORE_CASE).containsMatchIn(trimmed)) continue
+                if (Regex("^(CONSTRAINT|PRIMARY KEY|FOREIGN KEY|UNIQUE|CHECK\\b)", RegexOption.IGNORE_CASE).containsMatchIn(trimmed)) continue
                 val colMatch = Regex("^([a-zA-Z0-9_]+)\\s+").find(trimmed)
                 if (colMatch != null) {
                     sqlTables[currentTable]?.add(colMatch.groupValues[1].lowercase())
@@ -67,6 +67,8 @@ class SchemaIntegrityTest {
             com.sunpos.backend.domain.inventory.InventoryItem::class.java to "inventory_items",
             com.sunpos.backend.domain.order.Order::class.java to "orders",
             com.sunpos.backend.domain.order.OrderItem::class.java to "order_items",
+            com.sunpos.backend.domain.order.TableTransferLog::class.java to "table_transfer_logs",
+            com.sunpos.backend.domain.order.BillCheckLog::class.java to "bill_check_logs",
             com.sunpos.backend.domain.promotion.Promotion::class.java to "promotions",
             com.sunpos.backend.domain.promotion.Coupon::class.java to "coupons",
             com.sunpos.backend.domain.recipe.Recipe::class.java to "recipes",

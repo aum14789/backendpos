@@ -42,6 +42,11 @@ class OrderComboSnapshotRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<
     fun findByOrderItemId(orderItemId: String): List<OrderComboSnapshot> = findByField("orderItemId", orderItemId)
 }
 
+@Repository
+class BillCheckLogRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<BillCheckLog>(jdbcTemplate, "bill_check_logs", BillCheckLog::class.java) {
+    fun findByOrderId(orderId: String): List<BillCheckLog> = findByField("orderId", orderId).sortedBy { it.checkSequence }
+}
+
 @Service
 class OrderService(
     private val orderRepository: OrderRepository,
@@ -57,7 +62,8 @@ class OrderService(
     private val userRepository: UserRepository? = null,
     private val userRoleRepository: UserRoleRepository? = null,
     private val roleRepository: RoleRepository? = null,
-    private val crmService: com.sunpos.backend.domain.crm.CrmService? = null
+    private val crmService: com.sunpos.backend.domain.crm.CrmService? = null,
+    private val billCheckLogRepository: BillCheckLogRepository? = null
 ) {
     companion object {
         const val SCALE = 4
@@ -487,12 +493,36 @@ class OrderService(
         orderRepository.save(order)
     }
 
+    fun recordBillCheck(orderId: String, sequence: Int?, checkedBy: String, snapshotTotalSatang: Long): BillCheckLog {
+        val existingLogs = billCheckLogRepository?.findByOrderId(orderId) ?: emptyList()
+        val nextSeq = sequence ?: ((existingLogs.maxOfOrNull { it.checkSequence } ?: 0) + 1)
+        val log = BillCheckLog(
+            orderId = orderId,
+            checkSequence = nextSeq,
+            checkedAt = Instant.now(),
+            checkedBy = checkedBy,
+            snapshotTotalSatang = snapshotTotalSatang
+        )
+        billCheckLogRepository?.save(log)
+        return log
+    }
+
+    fun getBillCheckLogs(orderId: String): List<BillCheckLog> {
+        return billCheckLogRepository?.findByOrderId(orderId) ?: emptyList()
+    }
+
     private fun generateOrderNumber(branchId: String): String {
         val dateStr = DateTimeFormatter.ofPattern("yyyyMMdd").withZone(ZoneId.of("UTC")).format(Instant.now())
         val randomSeq = (1000..9999).random()
         return "ORD-$dateStr-$randomSeq"
     }
 }
+
+data class RecordBillCheckRequest(
+    val sequence: Int? = null,
+    val checkedBy: String? = null,
+    val snapshotTotalSatang: Long = 0L
+)
 
 @RestController
 @RequestMapping("/api/v1/orders")
@@ -547,5 +577,22 @@ class OrderController(
     @PreAuthorize("hasAuthority('ORDER_CREATE') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_CASHIER')")
     fun transitionStatus(@PathVariable id: String, @RequestParam targetStatus: OrderStatus): ApiResponse<OrderResponseDto> {
         return ApiResponse.success(orderService.transitionOrderStatus(id, targetStatus), "Order status updated successfully")
+    }
+
+    @PostMapping("/{id}/bill-check")
+    @PreAuthorize("hasAuthority('ORDER_CREATE') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_STORE_MANAGER') or hasAuthority('ROLE_CASHIER')")
+    fun recordBillCheck(
+        @PathVariable id: String,
+        @RequestBody req: RecordBillCheckRequest,
+        principal: Principal?
+    ): ApiResponse<BillCheckLog> {
+        val checkedBy = req.checkedBy ?: principal?.name ?: "Cashier"
+        val log = orderService.recordBillCheck(id, req.sequence, checkedBy, req.snapshotTotalSatang)
+        return ApiResponse.success(log, "Bill check recorded successfully")
+    }
+
+    @GetMapping("/{id}/bill-checks")
+    fun getBillCheckLogs(@PathVariable id: String): ApiResponse<List<BillCheckLog>> {
+        return ApiResponse.success(orderService.getBillCheckLogs(id))
     }
 }

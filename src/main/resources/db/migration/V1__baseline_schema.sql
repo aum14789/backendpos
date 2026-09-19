@@ -781,7 +781,39 @@ CREATE TABLE IF NOT EXISTS order_items (
     recipe_version_snapshot VARCHAR(50),
     combo_definition_id_snapshot VARCHAR(36),
     channel VARCHAR(50) DEFAULT 'POS' NOT NULL,
+    is_voided BOOLEAN DEFAULT FALSE,
+    status VARCHAR(20) DEFAULT 'ACTIVE',
+    voided_by VARCHAR(64),
+    void_approved_by VARCHAR(64),
+    voided_at TIMESTAMP WITH TIME ZONE,
+    void_reason VARCHAR(255),
+    is_waste BOOLEAN DEFAULT FALSE,
+    ordered_by VARCHAR(64),
+    ordered_at TIMESTAMP WITH TIME ZONE,
     CONSTRAINT pk_order_items PRIMARY KEY (id)
+);
+
+-- Table: table_transfer_logs
+CREATE TABLE IF NOT EXISTS table_transfer_logs (
+    id VARCHAR(64) NOT NULL,
+    order_id VARCHAR(64) NOT NULL,
+    from_table_id VARCHAR(64) NOT NULL,
+    to_table_id VARCHAR(64) NOT NULL,
+    transferred_by VARCHAR(64),
+    transferred_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    reason VARCHAR(255),
+    CONSTRAINT pk_table_transfer_logs PRIMARY KEY (id)
+);
+
+-- Table: bill_check_logs
+CREATE TABLE IF NOT EXISTS bill_check_logs (
+    id VARCHAR(64) NOT NULL,
+    order_id VARCHAR(64) NOT NULL,
+    check_sequence INTEGER DEFAULT 1 NOT NULL,
+    checked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    checked_by VARCHAR(64),
+    snapshot_total_satang BIGINT DEFAULT 0 NOT NULL,
+    CONSTRAINT pk_bill_check_logs PRIMARY KEY (id)
 );
 
 -- Table: order_promotion_allocations
