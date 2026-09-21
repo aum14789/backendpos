@@ -2483,67 +2483,42 @@ CREATE INDEX idx_users_company_active ON public.users USING btree (company_id, i
 
 -- Essential System Master Seeds
 
--- 1. Default Permissions
+-- 1. Default Permissions (คำอธิบายสิทธิ์ระบบภาษาไทย)
 INSERT INTO permissions (id, code, description) VALUES
-  ('perm-01', 'ORDER_VIEW', 'View orders'),
-  ('perm-02', 'ORDER_CREATE', 'Create and modify orders'),
-  ('perm-03', 'ORDER_CANCEL', 'Cancel unbilled orders'),
-  ('perm-04', 'ORDER_VOID', 'Void completed financial orders'),
-  ('perm-05', 'DISCOUNT_APPLY', 'Apply standard promotions and discounts'),
-  ('perm-06', 'DISCOUNT_OVERRIDE', 'Override manual discount limits'),
-  ('perm-14', 'COUPON_OVERRIDE', 'Close bill with cash discount in place of a coupon outside its active days/time window (ADR 0009)'),
-  ('perm-07', 'PAYMENT_REFUND', 'Process full or partial payment refunds'),
-  ('perm-08', 'STOCK_ADJUST', 'Perform stock adjustments and counts'),
-  ('perm-09', 'STOCK_TRANSFER', 'Initiate and receive warehouse stock transfers'),
-  ('perm-10', 'PURCHASE_APPROVE', 'Approve purchase orders and goods receiving'),
-  ('perm-11', 'PROMOTION_MANAGE', 'Create and edit promotion rules and coupons'),
-  ('perm-12', 'USER_MANAGE', 'Manage users, PIN codes, and role assignments'),
-  ('perm-13', 'REPORT_VIEW', 'Access sales, financial, and inventory reports'),
-  ('perm-14', 'ORGANIZATION_MANAGE', 'Manage companies, branches, and POS devices'),
-  ('perm-15', 'MENU_MANAGE', 'Manage menu items, categories, and prices'),
-  ('perm-16', 'TABLE_MANAGE', 'Manage table layout and zones'),
-  ('perm-17', 'SHIFT_OPEN', 'Open cashier shift'),
-  ('perm-18', 'SHIFT_CLOSE', 'Close cashier shift'),
-  ('perm-19', 'PAYMENT_PROCESS', 'Process payments'),
-  ('perm-20', 'INVENTORY_CONFIG_MANAGE', 'Configure inventory settings'),
-  ('perm-21', 'COUPON_MANAGE', 'Manage coupons and vouchers'),
-  ('perm-22', 'crm.coupon.manage', 'CRM Coupon management'),
-  ('perm-23', 'POS_CONFIG_MANAGE', 'Manage POS devices and printers')
-ON CONFLICT (id) DO NOTHING;
+  ('perm-01', 'ORDER_VIEW', 'ดูรายการคำสั่งซื้อและสถานะออเดอร์ (View Orders)'),
+  ('perm-02', 'ORDER_CREATE', 'สร้าง เพิ่ม และแก้ไขรายการสั่งอาหาร (Create & Modify Orders)'),
+  ('perm-03', 'ORDER_CANCEL', 'ยกเลิกรายการออเดอร์ก่อนชำระเงิน (Cancel Unbilled Orders)'),
+  ('perm-04', 'ORDER_VOID', 'ยกเลิกบิลที่ปิดการขายแล้ว (Void Completed Financial Orders)'),
+  ('perm-05', 'DISCOUNT_APPLY', 'ใช้งานโปรโมชันและส่วนลดตามมาตรฐาน (Apply Standard Discounts)'),
+  ('perm-06', 'DISCOUNT_OVERRIDE', 'อนุมัติส่วนลดพิเศษเกินวงเงินกำหนด (Override Manual Discounts)'),
+  ('perm-07', 'COUPON_OVERRIDE', 'อนุมัติใช้คูปองนอกช่วงเวลาหรือเงื่อนไขพิเศษ (Coupon Override)'),
+  ('perm-08', 'PAYMENT_REFUND', 'ทำรายการคืนเงินลูกค้าเต็มจำนวนหรือบางส่วน (Payment Refund)'),
+  ('perm-09', 'STOCK_ADJUST', 'ตรวจนับและปรับปรุงยอดสต็อกวัตถุดิบ (Stock Adjustments & Counts)'),
+  ('perm-10', 'STOCK_TRANSFER', 'สร้างและรับโอนย้ายวัตถุดิบระหว่างคลัง (Warehouse Stock Transfers)'),
+  ('perm-11', 'PURCHASE_APPROVE', 'อนุมัติใบสั่งซื้อ (PO) และการตรวจรับวัตถุดิบ (Goods Receiving)'),
+  ('perm-12', 'PROMOTION_MANAGE', 'สร้างและจัดการโปรโมชัน แคมเปญ และคูปอง (Promotions & Coupons)'),
+  ('perm-13', 'USER_MANAGE', 'จัดการผู้ใช้งาน พนักงาน รหัส PIN และสิทธิ์ (Users & Roles)'),
+  ('perm-14', 'REPORT_VIEW', 'เข้าถึงรายงานยอดขาย รายงานการเงิน และคลังสินค้า (View Reports)'),
+  ('perm-15', 'ORGANIZATION_MANAGE', 'จัดการองค์กร แบรนด์ สาขา และอุปกรณ์ POS (Organization & Branches)'),
+  ('perm-16', 'MENU_MANAGE', 'จัดการรายการอาหาร หมวดหมู่ และราคาขาย (Menu Items & Categories)'),
+  ('perm-17', 'TABLE_MANAGE', 'จัดการผังโต๊ะอาหารและโซนที่นั่ง (Table Layout & Zones)'),
+  ('perm-18', 'SHIFT_OPEN', 'เปิดกะแคชเชียร์และบันทึกเงินทอนเริ่มต้น (Open Cashier Shift)'),
+  ('perm-19', 'SHIFT_CLOSE', 'ปิดกะแคชเชียร์และตรวจนับเงินสดปิดกะ (Close Cashier Shift)'),
+  ('perm-20', 'PAYMENT_PROCESS', 'รับชำระเงินและปิดบิล (Cash, QR, Credit Card)'),
+  ('perm-21', 'INVENTORY_CONFIG_MANAGE', 'กำหนดค่าระบบคลังสินค้าและการตัดสต็อก (Inventory Settings)'),
+  ('perm-22', 'COUPON_MANAGE', 'สร้างและจัดการคูปองส่วนลด (Manage Coupons & Vouchers)'),
+  ('perm-23', 'crm.coupon.manage', 'จัดการคูปองสิทธิประโยชน์และระบบสมาชิก CRM (CRM Loyalty Coupons)'),
+  ('perm-24', 'POS_CONFIG_MANAGE', 'ตั้งค่าระบบเครื่อง POS และเครื่องพิมพ์ใบเสร็จ (POS Devices & Printers)')
+ON CONFLICT (id) DO UPDATE SET description = EXCLUDED.description;
 
--- 2. System Roles
+-- 2. System Roles (คงเหลือเฉพาะ ROLE_SUPER_ADMIN สูงสุดสำหรับผู้ดูแลระบบ)
 INSERT INTO roles (id, name, description) VALUES 
-  ('role-01', 'ROLE_SUPER_ADMIN', 'Super Administrator with full platform access'),
-  ('role-02', 'ROLE_BRANCH_MANAGER', 'Branch Manager with management privileges'),
-  ('role-03', 'ROLE_SUPERVISOR', 'Shift Supervisor with discount override privileges'),
-  ('role-04', 'ROLE_CASHIER', 'Frontline Cashier for POS operations'),
-  ('role-05', 'ROLE_KITCHEN_STAFF', 'Kitchen Display and order preparation staff')
-ON CONFLICT (id) DO NOTHING;
+  ('role-01', 'ROLE_SUPER_ADMIN', 'ผู้ดูแลระบบส่วนกลางสูงสุด (Super Administrator with full platform access)')
+ON CONFLICT (id) DO UPDATE SET description = EXCLUDED.description;
 
 -- 3. Grant Super Admin All Permissions
 INSERT INTO role_permissions (id, role_id, permission_id)
 SELECT gen_random_uuid(), 'role-01', id FROM permissions
-ON CONFLICT DO NOTHING;
-
--- Branch Manager Permissions
-INSERT INTO role_permissions (id, role_id, permission_id) VALUES
-  (gen_random_uuid(), 'role-02', 'perm-01'), (gen_random_uuid(), 'role-02', 'perm-02'), (gen_random_uuid(), 'role-02', 'perm-03'), (gen_random_uuid(), 'role-02', 'perm-04'),
-  (gen_random_uuid(), 'role-02', 'perm-05'), (gen_random_uuid(), 'role-02', 'perm-06'), (gen_random_uuid(), 'role-02', 'perm-07'), (gen_random_uuid(), 'role-02', 'perm-08'),
-  (gen_random_uuid(), 'role-02', 'perm-09'), (gen_random_uuid(), 'role-02', 'perm-11'), (gen_random_uuid(), 'role-02', 'perm-12'), (gen_random_uuid(), 'role-02', 'perm-13'),
-  (gen_random_uuid(), 'role-02', 'perm-15'), (gen_random_uuid(), 'role-02', 'perm-16'), (gen_random_uuid(), 'role-02', 'perm-17'), (gen_random_uuid(), 'role-02', 'perm-18'),
-  (gen_random_uuid(), 'role-02', 'perm-19'), (gen_random_uuid(), 'role-02', 'perm-20'), (gen_random_uuid(), 'role-02', 'perm-21'), (gen_random_uuid(), 'role-02', 'perm-22'),
-  (gen_random_uuid(), 'role-02', 'perm-23')
-ON CONFLICT DO NOTHING;
-
--- Cashier Permissions
-INSERT INTO role_permissions (id, role_id, permission_id) VALUES
-  (gen_random_uuid(), 'role-04', 'perm-01'), (gen_random_uuid(), 'role-04', 'perm-02'), (gen_random_uuid(), 'role-04', 'perm-03'), (gen_random_uuid(), 'role-04', 'perm-05'),
-  (gen_random_uuid(), 'role-04', 'perm-17'), (gen_random_uuid(), 'role-04', 'perm-18'), (gen_random_uuid(), 'role-04', 'perm-19')
-ON CONFLICT DO NOTHING;
-
--- Kitchen Permissions
-INSERT INTO role_permissions (id, role_id, permission_id) VALUES
-  (gen_random_uuid(), 'role-05', 'perm-01')
 ON CONFLICT DO NOTHING;
 
 -- 4. Default Company
