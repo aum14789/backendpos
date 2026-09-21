@@ -2551,108 +2551,21 @@ INSERT INTO companies (id, name, tax_id)
 VALUES ('comp-001', 'SunPOS Restaurant Group Co., Ltd.', '0105560000001')
 ON CONFLICT (id) DO NOTHING;
 
--- 5. Default Brands
-INSERT INTO brands (id, company_id, name, code, is_active)
-VALUES 
-  ('brand-001', 'comp-001', 'SunPOS Shabu & Grill', 'SHABU', true),
-  ('brand-002', 'comp-001', 'SunPOS Japanese Dining', 'JAPAN', true),
-  ('brand-003', 'comp-001', 'SunPOS Cafe & Bakery', 'CAFE', true)
-ON CONFLICT (id) DO NOTHING;
-
--- 6. Default Branches
-INSERT INTO branches (id, company_id, brand_id, name, code, address, phone, business_day_close_time, tax_rate, service_charge_rate, is_active)
-VALUES 
-  ('branch-001', 'comp-001', 'brand-001', 'สาขาใหญ่ สยามสแควร์ (Siam Flagship)', 'HQ-01', 'Siam Square One, Bangkok', '02-123-4567', '02:00', 7.00, 10.00, true),
-  ('branch-002', 'comp-001', 'brand-001', 'สาขา เซ็นทรัลลาดพร้าว (Ladprao)', 'LP-02', 'Central Ladprao, Bangkok', '02-987-6543', '02:00', 7.00, 10.00, true)
-ON CONFLICT (id) DO NOTHING;
-
--- 7. Default Warehouses
-INSERT INTO warehouses (id, branch_id, name, code, is_central, is_active)
-VALUES 
-  ('wh-central', 'branch-001', 'คลังสินค้ากลาง (Central Kitchen)', 'WH-CENTRAL', true, true),
-  ('wh-branch-001', 'branch-001', 'คลังประจำสาขา สยามสแควร์', 'WH-B01', false, true)
-ON CONFLICT (id) DO NOTHING;
-
--- 8. Default Users (admin, manager01, cashier01)
+-- 5. Default Super Administrator Account (admin / password, PIN 1234)
 -- BCrypt password: password ($2a$10$i50/pAXDdCj2u43dB7CHgezdtc4f0/DWMmVdVvlMHR/AhQwXgQFaa)
 -- PIN: 1234 ($2a$10$3n3nWX3a7salqcVriL.2.eVjGCbysLBhi0ReTThl26wy8IY8X5JCO)
 INSERT INTO users (id, company_id, username, password_hash, pin_code, assigned_modules, full_name, email, phone, is_active)
 VALUES 
-  ('usr-001', 'comp-001', 'admin', '$2a$10$i50/pAXDdCj2u43dB7CHgezdtc4f0/DWMmVdVvlMHR/AhQwXgQFaa', '$2a$10$3n3nWX3a7salqcVriL.2.eVjGCbysLBhi0ReTThl26wy8IY8X5JCO', 'REPORTS,STORE_OPERATIONS,MENU_PROMOTIONS,INVENTORY_PURCHASING,KITCHEN_PRODUCTION,CRM_LOYALTY,ORG_SETTINGS', 'System Administrator', 'admin@sunpos.com', '081-999-8888', true),
-  ('usr-002', 'comp-001', 'manager01', '$2a$10$i50/pAXDdCj2u43dB7CHgezdtc4f0/DWMmVdVvlMHR/AhQwXgQFaa', '$2a$10$H6N2ozIESJ4zMS23CpQuoO9Dfh6UH68ehZiak7fCaVomeX9jCqTru', 'REPORTS,STORE_OPERATIONS,MENU_PROMOTIONS,INVENTORY_PURCHASING,KITCHEN_PRODUCTION,CRM_LOYALTY,ORG_SETTINGS', 'Branch Manager 01', 'manager@sunpos.com', '081-999-7777', true),
-  ('usr-003', 'comp-001', 'cashier01', '$2a$10$i50/pAXDdCj2u43dB7CHgezdtc4f0/DWMmVdVvlMHR/AhQwXgQFaa', '$2a$10$3n3nWX3a7salqcVriL.2.eVjGCbysLBhi0ReTThl26wy8IY8X5JCO', 'STORE_OPERATIONS', 'Cashier 01', 'cashier@sunpos.com', '081-999-6666', true)
+  ('usr-001', 'comp-001', 'admin', '$2a$10$i50/pAXDdCj2u43dB7CHgezdtc4f0/DWMmVdVvlMHR/AhQwXgQFaa', '$2a$10$3n3nWX3a7salqcVriL.2.eVjGCbysLBhi0ReTThl26wy8IY8X5JCO', 'REPORTS,STORE_OPERATIONS,MENU_PROMOTIONS,INVENTORY_PURCHASING,KITCHEN_PRODUCTION,CRM_LOYALTY,ORG_SETTINGS', 'System Administrator', 'admin@sunpos.com', '081-999-8888', true)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO user_roles (id, user_id, role_id)
 VALUES 
-  (gen_random_uuid(), 'usr-001', 'role-01'),
-  (gen_random_uuid(), 'usr-002', 'role-02'),
-  (gen_random_uuid(), 'usr-003', 'role-04')
+  (gen_random_uuid(), 'usr-001', 'role-01')
 ON CONFLICT DO NOTHING;
 
--- 9. Default Device
-INSERT INTO devices (id, branch_id, device_name, device_code, device_type, app_version, status, is_active)
-VALUES 
-  ('dev-001', 'branch-001', 'Main Cashier POS 01', 'POS-MAIN-01', 'POS_MAIN', '1.0.0', 'ACTIVE', true)
-ON CONFLICT (id) DO NOTHING;
-
-
--- 10. Table Types (Baseline Master Data)
-INSERT INTO table_types (id, branch_id, name, code, is_default, created_at)
-VALUES 
-  ('type-std', 'branch-001', 'โต๊ะมาตรฐาน (Standard Table)', 'STD', true, CURRENT_TIMESTAMP),
-  ('type-vip', 'branch-001', 'โต๊ะ VIP (VIP Room)', 'VIP', false, CURRENT_TIMESTAMP),
-  ('type-bar', 'branch-001', 'เคาน์เตอร์บาร์ (Bar Counter)', 'BAR', false, CURRENT_TIMESTAMP)
-ON CONFLICT (id) DO NOTHING;
-
--- 11. Restaurant Zones
-INSERT INTO zones (id, branch_id, name, zone_type, sort_order, is_active, created_at)
-VALUES 
-  ('zone-01', 'branch-001', 'บุฟเฟ่ต์ (Buffet Zone)', 'BUFFET', 1, true, CURRENT_TIMESTAMP),
-  ('zone-02', 'branch-001', 'หน้าร้าน / A La Carte', 'DINE_IN', 2, true, CURRENT_TIMESTAMP)
-ON CONFLICT (id) DO NOTHING;
-
--- 12. Restaurant Tables
-INSERT INTO tables (id, branch_id, zone_id, table_type_id, name_number, capacity, status, is_active, created_at, updated_at)
-VALUES 
-  ('tbl-a01', 'branch-001', 'zone-01', 'type-std', 'A01', 4, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('tbl-a02', 'branch-001', 'zone-01', 'type-std', 'A02', 4, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('tbl-a03', 'branch-001', 'zone-01', 'type-std', 'A03', 4, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('tbl-a04', 'branch-001', 'zone-01', 'type-std', 'A04', 4, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('tbl-b01', 'branch-001', 'zone-02', 'type-std', 'B01', 2, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('tbl-b02', 'branch-001', 'zone-02', 'type-std', 'B02', 2, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('tbl-b03', 'branch-001', 'zone-02', 'type-std', 'B03', 4, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('tbl-b04', 'branch-001', 'zone-02', 'type-std', 'B04', 6, 'AVAILABLE', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-ON CONFLICT (id) DO NOTHING;
-
--- 13. Units of Measure (Inventory & Recipes)
-INSERT INTO units_of_measure (id, code, name, category, is_base_unit, conversion_factor, is_active, created_at)
-VALUES 
-  ('uom-kg', 'KG', 'กิโลกรัม (Kilogram)', 'WEIGHT', true, 1.0000, true, CURRENT_TIMESTAMP),
-  ('uom-g', 'G', 'กรัม (Gram)', 'WEIGHT', false, 0.0010, true, CURRENT_TIMESTAMP),
-  ('uom-l', 'L', 'ลิตร (Liter)', 'VOLUME', true, 1.0000, true, CURRENT_TIMESTAMP),
-  ('uom-ml', 'ML', 'มิลลิลิตร (Milliliter)', 'VOLUME', false, 0.0010, true, CURRENT_TIMESTAMP),
-  ('uom-pcs', 'PCS', 'ชิ้น / จาน (Piece)', 'COUNT', true, 1.0000, true, CURRENT_TIMESTAMP),
-  ('uom-box', 'BOX', 'กล่อง (Box)', 'COUNT', false, 12.0000, true, CURRENT_TIMESTAMP),
-  ('uom-pack', 'PACK', 'แพ็ค (Pack)', 'COUNT', false, 10.0000, true, CURRENT_TIMESTAMP)
-ON CONFLICT (id) DO NOTHING;
-
--- 14. Navigation Settings (Default ERP Navigation Config)
+-- 6. Navigation Settings (Default ERP Navigation Config)
 INSERT INTO navigation_settings (id, company_id, disabled_group_ids, disabled_item_paths, updated_at)
 VALUES ('default_nav_setting', 'comp-001', '', '', CURRENT_TIMESTAMP)
 ON CONFLICT (id) DO NOTHING;
 
--- 15. Activation Codes (Multi-Branch POS Activation Engine - ADR 0012)
-INSERT INTO activation_codes (
-    id, code, branch_id, branch_name, branch_code, device_code, device_name,
-    company_id, company_name, status, created_at, expires_at
-) VALUES 
-(
-    'act-branch-001-01', 'SUN-HQ01-POS01', 'branch-001', 'สาขาใหญ่ สยามสแควร์ (Siam Flagship)', 'HQ-01', 'POS-01', 'Main POS Terminal (Siam Flagship)',
-    'comp-001', 'SunPOS Restaurant Group Co., Ltd.', 'UNUSED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '10 years'
-),
-(
-    'act-branch-002-01', 'SUN-LP02-POS01', 'branch-002', 'สาขา เซ็นทรัลลาดพร้าว (Ladprao)', 'LP-02', 'POS-01', 'Main POS Terminal (Ladprao)',
-    'comp-001', 'SunPOS Restaurant Group Co., Ltd.', 'UNUSED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '10 years'
-)
-ON CONFLICT (code) DO NOTHING;
