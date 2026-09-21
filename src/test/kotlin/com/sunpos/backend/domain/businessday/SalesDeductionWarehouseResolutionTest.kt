@@ -76,6 +76,7 @@ class SalesDeductionWarehouseResolutionTest {
             id = "wh-loss", branchId = branchId, name = "Storage Room 1", code = "WH-1", warehouseRole = WarehouseRole.WASTE
         )
         val day = businessDayService.getOrCreateOpenBusinessDay(branchId)
+        val movementsBefore = movementCount()
 
         val failure = assertThrows(IllegalStateException::class.java) {
             businessDayService.closeBusinessDayEod(branchId, "mgr-01")
@@ -91,7 +92,14 @@ class SalesDeductionWarehouseResolutionTest {
             "ปิดวันไม่สำเร็จแล้วต้องไม่เหลือวันขายค้างในสถานะ PROCESSING"
         )
         assertTrue(batchRepository.findByBusinessDayIdAndWarehouseId(day.id, "wh-loss").isEmpty())
+        assertEquals(
+            movementsBefore,
+            movementCount(),
+            "ปิดวันล้มเหลวแล้วต้องไม่มีการเคลื่อนไหวสต็อกถูกเขียนเลย"
+        )
     }
+
+    private fun movementCount(): Int = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM stock_movements", Int::class.java)!!
 
     @Test
     fun `closing a day deducts from the role main warehouse even when another warehouse is named like one`() {
