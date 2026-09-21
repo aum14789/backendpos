@@ -330,11 +330,10 @@ class InventoryEodConsumptionService(
                     stockRepository.save(newStock)
                 }
 
-                if (!invConfig.allowNegativeStock && currentStock.quantity.compareTo(totalQtyNeeded) < 0) {
-                    throw IllegalArgumentException("Insufficient stock for item $inventoryItemId. Available: ${currentStock.quantity}, Required: $totalQtyNeeded")
-                }
-
-                // Update stock balance (allows negative)
+                // Deduct whatever the day consumed, even when the ingredient has not been received
+                // yet: a late or mis-entered goods receipt must never block the close, and the
+                // negative balance is the signal to chase that receipt (ADR 0032 / Spec 0034).
+                // Ingredients with enough stock simply end the day positive.
                 currentStock.quantity = currentStock.quantity.subtract(totalQtyNeeded).setScale(SCALE, ROUNDING)
                 stockRepository.save(currentStock)
 
