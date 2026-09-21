@@ -32,9 +32,7 @@ enum class BuffetConsumptionMode {
 class InventoryBranchConfig(
     val id: String = UUID.randomUUID().toString(),
     var branchId: String = "",
-    var stockDeductionMode: StockDeductionMode = StockDeductionMode.EOD,
     var buffetConsumptionMode: BuffetConsumptionMode = BuffetConsumptionMode.HEADCOUNT_RECIPE,
-    var allowNegativeStock: Boolean = false,
     var autoCreateStockOnSale: Boolean = false,
     var updatedAt: Instant = Instant.now(),
     var updatedBy: String? = null
@@ -43,8 +41,10 @@ class InventoryBranchConfig(
 // ── DTOs ──
 
 data class InventoryBranchConfigDto(
+    @Deprecated("Retired in ADR 0032/Spec 0034; all sales deduction occurs at EOD")
     val stockDeductionMode: StockDeductionMode? = null,
     val buffetConsumptionMode: BuffetConsumptionMode? = null,
+    @Deprecated("Retired in ADR 0032/Spec 0034; EOD deduction permits negative stock unconditionally")
     val allowNegativeStock: Boolean? = null,
     val autoCreateStockOnSale: Boolean? = null,
     val updatedBy: String? = null
@@ -73,9 +73,7 @@ data class CloneInventoryConfigDto(
 data class InventoryBranchConfigResponseDto(
     val id: String = "",
     val branchId: String = "",
-    val stockDeductionMode: String = "",
     val buffetConsumptionMode: String = "",
-    val allowNegativeStock: Boolean = false,
     val autoCreateStockOnSale: Boolean = false,
     val updatedAt: Instant = Instant.now(),
     val updatedBy: String? = null
@@ -91,9 +89,7 @@ data class BranchConfigOverviewDto(
     val businessDayCloseTime: String = "02:00",
     val taxRate: BigDecimal = BigDecimal("7.00"),
     val serviceChargeRate: BigDecimal = BigDecimal("10.00"),
-    val stockDeductionMode: String = StockDeductionMode.EOD.name,
     val buffetConsumptionMode: String = BuffetConsumptionMode.HEADCOUNT_RECIPE.name,
-    val allowNegativeStock: Boolean = false,
     val autoCreateStockOnSale: Boolean = false,
     val updatedAt: Instant = Instant.now(),
     val updatedBy: String? = null
@@ -155,9 +151,7 @@ class InventoryConfigService(
                 businessDayCloseTime = branch.businessDayCloseTime,
                 taxRate = branch.taxRate,
                 serviceChargeRate = branch.serviceChargeRate,
-                stockDeductionMode = invConfig.stockDeductionMode.name,
                 buffetConsumptionMode = invConfig.buffetConsumptionMode.name,
-                allowNegativeStock = invConfig.allowNegativeStock,
                 autoCreateStockOnSale = invConfig.autoCreateStockOnSale,
                 updatedAt = invConfig.updatedAt,
                 updatedBy = invConfig.updatedBy
@@ -169,9 +163,7 @@ class InventoryConfigService(
     fun updateConfig(branchId: String, dto: InventoryBranchConfigDto): InventoryBranchConfigResponseDto {
         val config = getConfigForBranch(branchId)
 
-        dto.stockDeductionMode?.let { config.stockDeductionMode = it }
         dto.buffetConsumptionMode?.let { config.buffetConsumptionMode = it }
-        dto.allowNegativeStock?.let { config.allowNegativeStock = it }
         dto.autoCreateStockOnSale?.let { config.autoCreateStockOnSale = it }
         dto.updatedBy?.let { config.updatedBy = it }
         config.updatedAt = Instant.now()
@@ -190,9 +182,7 @@ class InventoryConfigService(
         if (dto.config != null) {
             uniqueBranchIds.forEach { branchId ->
                 val config = getConfigForBranch(branchId)
-                dto.config.stockDeductionMode?.let { config.stockDeductionMode = it }
                 dto.config.buffetConsumptionMode?.let { config.buffetConsumptionMode = it }
-                dto.config.allowNegativeStock?.let { config.allowNegativeStock = it }
                 dto.config.autoCreateStockOnSale?.let { config.autoCreateStockOnSale = it }
                 dto.updatedBy?.let { config.updatedBy = it }
                 config.updatedAt = Instant.now()
@@ -234,9 +224,7 @@ class InventoryConfigService(
         targetIds.forEach { targetBranchId ->
             // Clone Inventory settings
             val targetConfig = getConfigForBranch(targetBranchId)
-            targetConfig.stockDeductionMode = sourceConfig.stockDeductionMode
             targetConfig.buffetConsumptionMode = sourceConfig.buffetConsumptionMode
-            targetConfig.allowNegativeStock = sourceConfig.allowNegativeStock
             targetConfig.autoCreateStockOnSale = sourceConfig.autoCreateStockOnSale
             targetConfig.updatedBy = dto.updatedBy
             targetConfig.updatedAt = Instant.now()
@@ -266,9 +254,7 @@ class InventoryConfigService(
     private fun InventoryBranchConfig.toDto() = InventoryBranchConfigResponseDto(
         id = this.id,
         branchId = this.branchId,
-        stockDeductionMode = this.stockDeductionMode.name,
         buffetConsumptionMode = this.buffetConsumptionMode.name,
-        allowNegativeStock = this.allowNegativeStock,
         autoCreateStockOnSale = this.autoCreateStockOnSale,
         updatedAt = this.updatedAt,
         updatedBy = this.updatedBy

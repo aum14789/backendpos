@@ -172,8 +172,6 @@ class AutoProvisionedRawStockPureTest {
         org.mockito.Mockito.`when`(invConfigService.getConfigForBranch("branch-01")).thenReturn(
             InventoryBranchConfig(
                 branchId = "branch-01",
-                stockDeductionMode = StockDeductionMode.EOD,
-                allowNegativeStock = true,
                 autoCreateStockOnSale = true
             )
         )
@@ -286,9 +284,7 @@ class AutoProvisionedRawStockPureTest {
         val invConfigService = mock(InventoryConfigService::class.java)
         org.mockito.Mockito.`when`(invConfigService.getConfigForBranch("branch-01")).thenReturn(
             InventoryBranchConfig(
-                branchId = "branch-01",
-                stockDeductionMode = StockDeductionMode.EOD,
-                allowNegativeStock = true
+                branchId = "branch-01"
             )
         )
 
@@ -346,9 +342,7 @@ class AutoProvisionedRawStockPureTest {
         val invConfigService = mock(InventoryConfigService::class.java)
         org.mockito.Mockito.`when`(invConfigService.getConfigForBranch("branch-01")).thenReturn(
             InventoryBranchConfig(
-                branchId = "branch-01",
-                stockDeductionMode = StockDeductionMode.EOD,
-                allowNegativeStock = true
+                branchId = "branch-01"
             )
         )
 

@@ -152,11 +152,7 @@ class InventoryEodConsumptionService(
             return
         }
 
-        // Check inventory config — if REALTIME mode, skip EOD consumption entirely
         val invConfig = inventoryConfigService.getConfigForBranch(branchId)
-        if (invConfig.stockDeductionMode == StockDeductionMode.REALTIME) {
-            return
-        }
 
         // Sales consumption only ever lands in a branch main warehouse, using the same rule the
         // daily close uses to pick one (see SalesDeductionWarehouse).

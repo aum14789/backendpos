@@ -84,7 +84,9 @@ class InventoryService(
     private val countRepository: StockCountRepository,
     private val countItemRepository: StockCountItemRepository,
     private val wasteRepository: StockWasteRepository,
-    private val wacCalculationService: WacCalculationService
+    private val wacCalculationService: WacCalculationService,
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private val branchRepository: com.sunpos.backend.domain.organization.BranchRepository? = null
 ) {
     companion object {
         const val SCALE = 4
@@ -192,6 +194,55 @@ class InventoryService(
     }
 
     fun getStockOnHand(warehouseId: String): List<InventoryStock> = stockRepository.findByWarehouseId(warehouseId)
+
+    fun getNegativeStocks(branchId: String? = null): List<NegativeStockDto> {
+        val targetWarehouses = if (!branchId.isNullOrBlank()) {
+            warehouseRepository.findByBranchId(branchId)
+        } else {
+            warehouseRepository.findAll()
+        }
+        if (targetWarehouses.isEmpty()) return emptyList()
+
+        val branchMap = branchRepository?.findAll()?.associateBy { it.id } ?: emptyMap()
+        val itemMap = itemRepository.findAll().associateBy { it.id }
+
+        val negativeStocks = mutableListOf<NegativeStockDto>()
+        for (wh in targetWarehouses) {
+            val stocks = stockRepository.findByWarehouseId(wh.id)
+            for (stock in stocks) {
+                if (stock.quantity.compareTo(BigDecimal.ZERO) < 0) {
+                    val item = itemMap[stock.inventoryItemId]
+                    val branch = branchMap[wh.branchId]
+                    val unitCost = if (stock.weightedAverageCost.compareTo(BigDecimal.ZERO) > 0) {
+                        stock.weightedAverageCost
+                    } else {
+                        item?.standardCost ?: BigDecimal.ZERO
+                    }
+                    negativeStocks.add(
+                        NegativeStockDto(
+                            id = stock.id,
+                            branchId = wh.branchId ?: "",
+                            branchName = branch?.name ?: wh.branchId ?: "",
+                            warehouseId = wh.id,
+                            warehouseName = wh.name,
+                            inventoryItemId = stock.inventoryItemId,
+                            itemName = item?.name ?: "Unknown Item",
+                            itemSku = item?.sku ?: "",
+                            unit = item?.unit ?: "unit",
+                            quantity = stock.quantity,
+                            unitCost = unitCost,
+                            isAutoProvisioned = stock.isAutoProvisioned
+                        )
+                    )
+                }
+            }
+        }
+        return negativeStocks.sortedWith(
+            compareBy<NegativeStockDto> { it.branchName }
+                .thenBy { it.warehouseName }
+                .thenBy { it.itemName }
+        )
+    }
 
     fun listMovements(warehouseId: String): List<StockMovement> = movementRepository.findByWarehouseId(warehouseId)
 
@@ -546,6 +597,11 @@ class InventoryController(
         return ApiResponse.success(inventoryService.getStockOnHand(warehouseId))
     }
 
+    @GetMapping("/negative-stocks")
+    fun getNegativeStocks(@RequestParam(required = false) branchId: String?): ApiResponse<List<NegativeStockDto>> {
+        return ApiResponse.success(inventoryService.getNegativeStocks(branchId))
+    }
+
     @GetMapping("/movements")
     fun getMovements(@RequestParam warehouseId: String): ApiResponse<List<StockMovement>> {
         return ApiResponse.success(inventoryService.listMovements(warehouseId))
@@ -597,4 +653,19 @@ class InventoryController(
 data class AssignStockDto(
     val warehouseId: String = "",
     val inventoryItemId: String = ""
+)
+
+data class NegativeStockDto(
+    val id: String = "",
+    val branchId: String = "",
+    val branchName: String = "",
+    val warehouseId: String = "",
+    val warehouseName: String = "",
+    val inventoryItemId: String = "",
+    val itemName: String = "",
+    val itemSku: String = "",
+    val unit: String = "",
+    val quantity: BigDecimal = BigDecimal.ZERO,
+    val unitCost: BigDecimal = BigDecimal.ZERO,
+    val isAutoProvisioned: Boolean = false
 )

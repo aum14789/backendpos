@@ -133,9 +133,7 @@ class PreOpeningStockBypassPureTest {
         org.mockito.Mockito.`when`(configService.getConfigForBranch(org.mockito.ArgumentMatchers.anyString()))
             .thenReturn(
                 InventoryBranchConfig(
-                    branchId = "branch-1",
-                    stockDeductionMode = StockDeductionMode.EOD,
-                    allowNegativeStock = true
+                    branchId = "branch-1"
                 )
             )
 
