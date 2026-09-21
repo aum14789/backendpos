@@ -124,15 +124,11 @@ class InventoryEodConsumptionService(
             return
         }
 
-        // Bypass specialized warehouses (Waste & Destroy) if warehouseRepository is available
+        // Sales consumption only ever lands in a branch main warehouse, using the same rule the
+        // daily close uses to pick one (see SalesDeductionWarehouse).
         val wh = warehouseRepository?.findById(warehouseId)?.orElse(null)
-        if (wh != null) {
-            val name = wh.name.lowercase()
-            val code = wh.code.lowercase()
-            if (name.contains("เวส") || name.contains("waste") || name.contains("ทำลาย") || name.contains("destroy") ||
-                code.contains("waste") || code.contains("destroy")) {
-                return
-            }
+        if (wh != null && !SalesDeductionWarehouse.mayReceiveSalesConsumption(wh)) {
+            return
         }
 
         val existingBatches = batchRepository.findByBusinessDayIdAndWarehouseId(businessDayId, warehouseId)

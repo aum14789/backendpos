@@ -1,5 +1,6 @@
 package com.sunpos.backend.domain.organization
 
+import com.sunpos.backend.domain.inventory.MainWarehouseProvisioning
 import org.slf4j.LoggerFactory
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Service
@@ -294,19 +295,20 @@ class BranchDataSeedingService(
             ) ?: 0
 
             if (existingWhCount == 0) {
-                val newWhId = UUID.randomUUID().toString()
-                val whCode = if (targetBranch.code.isNotBlank()) "WH-${targetBranch.code}" else "WH-${targetBranch.id.take(8)}"
+                val mainWarehouse = MainWarehouseProvisioning.warehouseFor(
+                    targetBranch.id, targetBranch.name, targetBranch.code
+                )
                 jdbcTemplate.update(
                     """
                     INSERT INTO warehouses (
-                        id, branch_id, name, code, is_central, is_active, created_at
+                        id, branch_id, name, code, warehouse_role, is_active, created_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?)
                     """.trimIndent(),
-                    newWhId,
-                    targetBranch.id,
-                    "คลังหลัก - ${targetBranch.name}",
-                    whCode,
-                    false,
+                    mainWarehouse.id,
+                    mainWarehouse.branchId,
+                    mainWarehouse.name,
+                    mainWarehouse.code,
+                    mainWarehouse.warehouseRole.name,
                     true,
                     now
                 )

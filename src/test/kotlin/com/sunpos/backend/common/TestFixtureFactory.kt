@@ -1,5 +1,6 @@
 package com.sunpos.backend.common
 
+import com.sunpos.backend.domain.inventory.WarehouseRole
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
@@ -60,17 +61,26 @@ class TestFixtureFactory(private val jdbcTemplate: JdbcTemplate) {
         branchId: String = "branch-001",
         name: String = "Test Main Warehouse",
         code: String? = null,
-        isCentral: Boolean = false
+        warehouseRole: WarehouseRole = WarehouseRole.MAIN
     ): String {
         ensureBranch(branchId)
         val whCode = code ?: if (id == "wh-branch-001") "WH-B01" else "WH-${id.takeLast(8)}"
+        if (warehouseRole == WarehouseRole.MAIN) {
+            // A branch has one operational main warehouse (uk_warehouses_branch_main_role). A test
+            // that provisions its own retires whichever one the baseline migration seeded, the same
+            // way a store replaces one: deactivate it and keep the row.
+            jdbcTemplate.update(
+                "UPDATE warehouses SET is_active = false WHERE branch_id = ? AND warehouse_role = 'MAIN' AND is_active AND id <> ?",
+                branchId, id
+            )
+        }
         jdbcTemplate.update(
             """
-            INSERT INTO warehouses (id, branch_id, name, code, is_central, is_active)
+            INSERT INTO warehouses (id, branch_id, name, code, warehouse_role, is_active)
             VALUES (?, ?, ?, ?, ?, true)
-            ON CONFLICT (id) DO UPDATE SET is_active = true
+            ON CONFLICT (id) DO UPDATE SET is_active = true, warehouse_role = EXCLUDED.warehouse_role
             """.trimIndent(),
-            id, branchId, name, whCode, isCentral
+            id, branchId, name, whCode, warehouseRole.name
         )
         return id
     }

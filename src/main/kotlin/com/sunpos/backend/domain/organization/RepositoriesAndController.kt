@@ -2,6 +2,8 @@ package com.sunpos.backend.domain.organization
 
 import com.sunpos.backend.common.ApiResponse
 import com.sunpos.backend.common.JdbcRepository
+import com.sunpos.backend.domain.inventory.MainWarehouseProvisioning
+import com.sunpos.backend.domain.inventory.WarehouseRepository
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Repository
@@ -48,7 +50,8 @@ class OrganizationController(
     private val brandRepository: BrandRepository,
     private val branchRepository: BranchRepository,
     private val deviceRepository: DeviceRepository,
-    private val activationCodeRepository: ActivationCodeRepository
+    private val activationCodeRepository: ActivationCodeRepository,
+    private val warehouseRepository: WarehouseRepository
 ) {
 
     @GetMapping("/companies")
@@ -159,6 +162,13 @@ class OrganizationController(
             isActive = dto.isActive
         )
         val saved = branchRepository.save(branch)
+
+        // Every branch needs a main warehouse: it is where stock arrives and where daily sales
+        // consumption is deducted. Provisioning it here means a branch never reaches its first
+        // end-of-day close without one (Spec 0033).
+        if (warehouseRepository.findByBranchId(saved.id).isEmpty()) {
+            warehouseRepository.save(MainWarehouseProvisioning.warehouseFor(saved.id, saved.name, saved.code))
+        }
 
         // If activationCode is supplied, ensure it exists in activation_codes collection
         if (!dto.activationCode.isNullOrBlank()) {

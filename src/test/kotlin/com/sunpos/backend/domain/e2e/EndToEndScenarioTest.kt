@@ -41,7 +41,7 @@ class EndToEndScenarioTest {
         testFixtureFactory.ensureBranch("branch-001")
         testFixtureFactory.ensureTable("table-01", "branch-001", "T01")
         testFixtureFactory.ensureTable("tbl-a01", "branch-001", "A01")
-        testFixtureFactory.ensureWarehouse("wh-central", "branch-001", "Central Kitchen", "WH-CENTRAL", true)
+        testFixtureFactory.ensureWarehouse("wh-central", "branch-001", "Central Kitchen", "WH-CENTRAL", WarehouseRole.CENTRAL)
         testFixtureFactory.ensureWarehouse("wh-sukhumvit", "branch-001", "Sukhumvit Warehouse", "WH-SUK-01")
         testFixtureFactory.ensureSupplier("sup-001", "Test Supplier", "SUP-01")
         testFixtureFactory.ensureInventoryItem("raw-001", "SKU-RAW-001", "Raw Pork", "KG", "G")

@@ -117,7 +117,6 @@ class AutoProvisionedRawStockPureTest {
             branchId = "branch-01",
             name = "คลังใหญ่ สยามสแควร์",
             code = "WH-B01",
-            isCentral = false,
             isActive = true
         )
 
@@ -237,7 +236,6 @@ class AutoProvisionedRawStockPureTest {
             branchId = "branch-01",
             name = "คลังใหญ่ สยามสแควร์",
             code = "WH-B01",
-            isCentral = false,
             isActive = true
         )
 
@@ -334,13 +332,14 @@ class AutoProvisionedRawStockPureTest {
         val orderItemRepo = FakeOrderItemRepository()
         val warehouseRepo = FakeWarehouseRepository()
 
-        // Setup Waste warehouse
+        // Setup Waste warehouse. The role is what makes it a waste warehouse (Spec 0033); the name
+        // is only a label a human reads.
         warehouseRepo.warehouses["wh-waste"] = Warehouse(
             id = "wh-waste",
             branchId = "branch-01",
             name = "คลังของเสีย (Waste Warehouse)",
             code = "WH-WASTE-01",
-            isCentral = false,
+            warehouseRole = WarehouseRole.WASTE,
             isActive = true
         )
 

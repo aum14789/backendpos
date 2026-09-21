@@ -1,6 +1,7 @@
 package com.sunpos.backend.domain
 
 import com.sunpos.backend.domain.catalog.*
+import com.sunpos.backend.domain.inventory.WarehouseRepository
 import com.sunpos.backend.domain.organization.*
 import com.sunpos.backend.domain.order.*
 import com.sunpos.backend.domain.table.*
@@ -55,8 +56,10 @@ class BackofficeApiControllerTests {
         branchRepository = mock(BranchRepository::class.java)
         deviceRepository = mock(DeviceRepository::class.java)
         val activationCodeRepository = mock(ActivationCodeRepository::class.java)
+        val warehouseRepository = mock(WarehouseRepository::class.java)
         organizationController = OrganizationController(
-            companyRepository, brandRepository, branchRepository, deviceRepository, activationCodeRepository
+            companyRepository, brandRepository, branchRepository, deviceRepository, activationCodeRepository,
+            warehouseRepository
         )
 
         // Catalog mocks

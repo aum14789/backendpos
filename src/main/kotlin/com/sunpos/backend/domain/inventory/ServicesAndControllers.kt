@@ -95,7 +95,39 @@ class InventoryService(
         return if (branchId.isNullOrBlank()) warehouseRepository.findAll() else warehouseRepository.findByBranchId(branchId)
     }
 
-    fun createWarehouse(wh: Warehouse): Warehouse = warehouseRepository.save(wh)
+    fun createWarehouse(wh: Warehouse): Warehouse {
+        requireSingleActiveMainWarehouse(wh)
+        return warehouseRepository.save(wh)
+    }
+
+    fun updateWarehouse(id: String, updated: Warehouse): Warehouse {
+        val existing = warehouseRepository.findById(id)
+            .orElseThrow { NoSuchElementException("Warehouse not found: $id") }
+        existing.name = updated.name
+        existing.code = updated.code
+        existing.warehouseRole = updated.warehouseRole
+        existing.isActive = updated.isActive
+        requireSingleActiveMainWarehouse(existing)
+        return warehouseRepository.save(existing)
+    }
+
+    /**
+     * A branch has exactly one operational main warehouse (Spec 0033). The database enforces this
+     * too (uk_warehouses_branch_main_role); checking here is what turns the violation into a
+     * sentence the operator can act on.
+     */
+    private fun requireSingleActiveMainWarehouse(warehouse: Warehouse) {
+        if (warehouse.warehouseRole != WarehouseRole.MAIN || !warehouse.isActive) return
+        val branchId = warehouse.branchId ?: return
+        val conflicting = warehouseRepository.findByBranchId(branchId)
+            .firstOrNull { it.id != warehouse.id && it.isActive && it.warehouseRole == WarehouseRole.MAIN }
+        if (conflicting != null) {
+            throw IllegalArgumentException(
+                "สาขานี้มีคลังใหญ่ \"${conflicting.name}\" อยู่แล้ว — หนึ่งสาขามีคลังใหญ่ได้เพียงแห่งเดียว " +
+                    "กรุณาเปลี่ยนบทบาทหรือปิดใช้งานคลังเดิมก่อน"
+            )
+        }
+    }
 
     fun listInventoryItems(): List<InventoryItem> = itemRepository.findAll()
 
@@ -453,6 +485,12 @@ class InventoryController(
     @PreAuthorize("hasAuthority('STOCK_ADJUST') or hasAuthority('ROLE_SUPER_ADMIN')")
     fun createWarehouse(@RequestBody wh: Warehouse): ApiResponse<Warehouse> {
         return ApiResponse.success(inventoryService.createWarehouse(wh), "Warehouse created successfully")
+    }
+
+    @PutMapping("/warehouses/{id}")
+    @PreAuthorize("hasAuthority('STOCK_ADJUST') or hasAuthority('ROLE_SUPER_ADMIN')")
+    fun updateWarehouse(@PathVariable id: String, @RequestBody wh: Warehouse): ApiResponse<Warehouse> {
+        return ApiResponse.success(inventoryService.updateWarehouse(id, wh), "Warehouse updated successfully")
     }
 
     @GetMapping("/items")

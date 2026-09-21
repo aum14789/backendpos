@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.*
 import org.mockito.Mockito.*
 import org.springframework.jdbc.core.JdbcTemplate
@@ -265,6 +266,14 @@ class BranchDataSeedingServicePureTest {
         assertTrue(summary.warehouseCreated)
         assertEquals(1, summary.recipesCloned)
         verify(jdbcTemplate).queryForObject(contains("FROM warehouses WHERE branch_id = ?"), eq(Int::class.java), eq("branch-target"))
+        // The provisioned warehouse must carry its role (Spec 0033): a branch that is cloned without
+        // one could not close its day.
+        val roleCaptor = ArgumentCaptor.forClass(Any::class.java)
+        verify(jdbcTemplate).update(
+            contains("INSERT INTO warehouses"),
+            any(), any(), any(), any(), roleCaptor.capture(), any(), any()
+        )
+        assertEquals("MAIN", roleCaptor.value)
         verify(jdbcTemplate).queryForList(contains("FROM recipe_ingredients WHERE recipe_id = ?"), eq("recipe-old-1"))
     }
 

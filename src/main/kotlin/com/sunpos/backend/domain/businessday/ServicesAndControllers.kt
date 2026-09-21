@@ -2,13 +2,15 @@ package com.sunpos.backend.domain.businessday
 
 import com.sunpos.backend.common.ApiResponse
 import com.sunpos.backend.common.JdbcRepository
-import org.springframework.jdbc.core.JdbcTemplate
+import com.sunpos.backend.domain.inventory.SalesDeductionWarehouse
 import com.sunpos.backend.domain.order.OrderRepository
 import com.sunpos.backend.domain.order.OrderStatus
 import com.sunpos.backend.domain.payment.PaymentMethod
 import com.sunpos.backend.domain.payment.PaymentStatus
 import com.sunpos.backend.domain.payment.PaymentTransactionRepository
 import com.sunpos.backend.domain.payment.RefundTransactionRepository
+import com.sunpos.backend.domain.organization.BranchRepository
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Repository
 import org.springframework.stereotype.Service
@@ -38,6 +40,7 @@ class BusinessDayService(
     private val clock: BusinessDayClock,
     private val inventoryEodConsumptionService: com.sunpos.backend.domain.recipe.InventoryEodConsumptionService,
     private val warehouseRepository: com.sunpos.backend.domain.inventory.WarehouseRepository,
+    private val branchRepository: BranchRepository,
     private val shiftRepository: com.sunpos.backend.domain.shift.CashierShiftRepository? = null
 ) {
     companion object {
@@ -106,29 +109,27 @@ class BusinessDayService(
             }
         }
 
-        // Trigger stock consumption strictly for the single primary Main Storage Warehouse (exclude Waste & Destroy)
-        val eligibleWarehouses = warehouseRepository.findByBranchId(branchId)
-            .filter { wh ->
-                wh.isActive && !wh.isCentral &&
-                !wh.name.contains("เวส", ignoreCase = true) &&
-                !wh.name.contains("waste", ignoreCase = true) &&
-                !wh.name.contains("ทำลาย", ignoreCase = true) &&
-                !wh.name.contains("เดสทรอย", ignoreCase = true) &&
-                !wh.name.contains("destroy", ignoreCase = true) &&
-                !wh.code.contains("WASTE", ignoreCase = true) &&
-                !wh.code.contains("DESTROY", ignoreCase = true)
-            }
-        // Deduct from exactly one primary sales warehouse per branch
-        val primaryWarehouse = eligibleWarehouses.firstOrNull {
-            it.code.contains("MAIN", ignoreCase = true) ||
-            it.code.contains("B01", ignoreCase = true) ||
-            it.code.contains("SUK", ignoreCase = true) ||
-            it.name.contains("สาขา", ignoreCase = true) ||
-            it.name.contains("Main", ignoreCase = true)
-        } ?: eligibleWarehouses.firstOrNull()
+        // The failure messages below are read by whoever is on shift, so name the branch, not just
+        // its id.
+        fun branchLabel(id: String): String =
+            branchRepository.findById(id).map { "${it.name} ($id)" }.orElse(id)
 
-        if (primaryWarehouse != null) {
-            inventoryEodConsumptionService.consumeBusinessDaySales(day.id, branchId, primaryWarehouse.id, closedBy)
+        // Trigger stock consumption for the branch's main warehouse only. The rule lives in
+        // SalesDeductionWarehouse, and a branch without one fails loudly instead of deducting from
+        // whichever warehouse happened to be listed first (Spec 0033).
+        when (val mainWarehouse = SalesDeductionWarehouse.branchMainWarehouse(warehouseRepository.findByBranchId(branchId))) {
+            is SalesDeductionWarehouse.Resolution.Found ->
+                inventoryEodConsumptionService.consumeBusinessDaySales(
+                    day.id, branchId, mainWarehouse.warehouse.id, closedBy
+                )
+
+            is SalesDeductionWarehouse.Resolution.Missing -> throw IllegalStateException(
+                "สาขา ${branchLabel(branchId)} ยังไม่มีคลังใหญ่ (MAIN) ที่ใช้งานอยู่ — กำหนดบทบาทของคลังในหน้าคลังสินค้าก่อนปิดวันขาย"
+            )
+
+            is SalesDeductionWarehouse.Resolution.Ambiguous -> throw IllegalStateException(
+                "สาขา ${branchLabel(branchId)} มีคลังใหญ่ (MAIN) ที่ใช้งานอยู่ ${mainWarehouse.warehouses.size} แห่ง — ต้องมีเพียงแห่งเดียว"
+            )
         }
 
         // Aggregate completed orders for this business day

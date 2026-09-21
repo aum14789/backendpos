@@ -33,12 +33,26 @@ enum class CountStatus {
     CANCELLED
 }
 
+/**
+ * What a warehouse is for.
+ *
+ * A branch holds exactly one active [MAIN] warehouse: the one daily sales consumption is deducted
+ * from. [CENTRAL] is the shared central kitchen, and [WASTE] / [DESTROY] hold loss and destroy
+ * stock, which is never consumed as sales.
+ */
+enum class WarehouseRole {
+    CENTRAL,
+    MAIN,
+    WASTE,
+    DESTROY
+}
+
 class Warehouse(
     val id: String = UUID.randomUUID().toString(),
     var branchId: String? = null,
     var name: String = "",
     var code: String = "",
-    var isCentral: Boolean = false,
+    var warehouseRole: WarehouseRole = WarehouseRole.MAIN,
     var isActive: Boolean = true,
     val createdAt: Instant = Instant.now()
 )
