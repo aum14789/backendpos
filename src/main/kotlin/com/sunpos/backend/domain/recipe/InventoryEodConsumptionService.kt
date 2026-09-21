@@ -67,45 +67,79 @@ class InventoryEodConsumptionService(
         ing: RecipeIngredient,
         soldQuantity: BigDecimal,
         currentStockDeductions: MutableMap<String, BigDecimal>
-    ): Pair<String, BigDecimal> {
+    ): List<Pair<String, BigDecimal>> {
         val wasteCoeff = BigDecimal.ONE.add(ing.wastePercentage.divide(BigDecimal("100"), SCALE, ROUNDING))
         val mainNeeded = ing.quantity.multiply(wasteCoeff).multiply(soldQuantity).setScale(SCALE, ROUNDING)
 
         val substitutes = substituteRepository?.findByRecipeIngredientId(ing.id)?.sortedBy { it.priority } ?: emptyList()
         if (substitutes.isEmpty()) {
-            return Pair(ing.inventoryItemId, mainNeeded)
+            return listOf(Pair(ing.inventoryItemId, mainNeeded))
         }
 
         // Check if main ingredient has enough stock
         val mainStockOpt = stockRepository.findByWarehouseIdAndInventoryItemId(warehouseId, ing.inventoryItemId)
+        val mainAllocated = currentStockDeductions[ing.inventoryItemId] ?: BigDecimal.ZERO
         val mainStockAvailable = if (mainStockOpt.isPresent) {
-            val allocated = currentStockDeductions[ing.inventoryItemId] ?: BigDecimal.ZERO
-            mainStockOpt.get().quantity.subtract(allocated)
+            mainStockOpt.get().quantity.subtract(mainAllocated)
         } else {
             BigDecimal.ZERO
         }
 
         if (mainStockAvailable.compareTo(mainNeeded) >= 0) {
-            return Pair(ing.inventoryItemId, mainNeeded)
+            return listOf(Pair(ing.inventoryItemId, mainNeeded))
         }
 
         // Main is insufficient, evaluate substitutes in order of priority (B -> C -> ...)
+        val results = mutableListOf<Pair<String, BigDecimal>>()
+        var remainingNeeded = mainNeeded
+
+        val mainEffectivePerPortion = ing.quantity.multiply(wasteCoeff)
+
         for (sub in substitutes) {
+            if (remainingNeeded.compareTo(BigDecimal.ZERO) <= 0) break
+
             val subWasteCoeff = BigDecimal.ONE.add(sub.wastePercentage.divide(BigDecimal("100"), SCALE, ROUNDING))
-            val subNeeded = sub.quantity.multiply(subWasteCoeff).multiply(soldQuantity).setScale(SCALE, ROUNDING)
+            val subEffectivePerPortion = sub.quantity.multiply(subWasteCoeff)
+
+            val conversionRatio = if (mainEffectivePerPortion.compareTo(BigDecimal.ZERO) > 0) {
+                subEffectivePerPortion.divide(mainEffectivePerPortion, SCALE, ROUNDING)
+            } else {
+                BigDecimal.ONE
+            }
+
+            val subNeededForRemaining = remainingNeeded.multiply(conversionRatio).setScale(SCALE, ROUNDING)
 
             val subStockOpt = stockRepository.findByWarehouseIdAndInventoryItemId(warehouseId, sub.inventoryItemId)
-            if (subStockOpt.isPresent) {
-                val subAllocated = currentStockDeductions[sub.inventoryItemId] ?: BigDecimal.ZERO
-                val subStockAvailable = subStockOpt.get().quantity.subtract(subAllocated)
-                if (subStockAvailable.compareTo(subNeeded) >= 0) {
-                    return Pair(sub.inventoryItemId, subNeeded)
+            val subAllocated = currentStockDeductions[sub.inventoryItemId] ?: BigDecimal.ZERO
+            val subStockAvailable = if (subStockOpt.isPresent) {
+                subStockOpt.get().quantity.subtract(subAllocated)
+            } else {
+                BigDecimal.ZERO
+            }
+
+            if (subStockAvailable.compareTo(BigDecimal.ZERO) > 0) {
+                val subToDeduct = subStockAvailable.min(subNeededForRemaining).setScale(SCALE, ROUNDING)
+                if (subToDeduct.compareTo(BigDecimal.ZERO) > 0) {
+                    results.add(Pair(sub.inventoryItemId, subToDeduct))
+                    val mainSatisfied = if (conversionRatio.compareTo(BigDecimal.ZERO) > 0) {
+                        subToDeduct.divide(conversionRatio, SCALE, ROUNDING)
+                    } else {
+                        subToDeduct
+                    }
+                    remainingNeeded = remainingNeeded.subtract(mainSatisfied).setScale(SCALE, ROUNDING)
+                    if (remainingNeeded.compareTo(BigDecimal.ZERO) < 0) {
+                        remainingNeeded = BigDecimal.ZERO
+                    }
                 }
             }
         }
 
-        // All substitutes exhausted -> Fallback to main ingredient (allowing negative stock)
-        return Pair(ing.inventoryItemId, mainNeeded)
+        // Fallback to main ingredient for whatever remains (permits negative stock)
+        if (remainingNeeded.compareTo(BigDecimal.ZERO) > 0) {
+            results.add(Pair(ing.inventoryItemId, remainingNeeded))
+        }
+
+        return results
     }
 
     @Transactional
@@ -178,6 +212,7 @@ class InventoryEodConsumptionService(
             //     Track per-order consumption separately for dedup with buffet headcount
             val orderLineConsumptions = mutableMapOf<String, MutableMap<String, BigDecimal>>() // orderId -> (itemId -> qty)
             val globalIngredientConsumptions = mutableMapOf<String, BigDecimal>()
+            val allBatchAllocatedStock = mutableMapOf<String, BigDecimal>()
 
             for (order in orders) {
                 val perOrderConsumption = mutableMapOf<String, BigDecimal>()
@@ -205,13 +240,16 @@ class InventoryEodConsumptionService(
 
                         val ingredients = recipeIngredientRepository.findByRecipeId(recipe.id)
                         for (ing in ingredients) {
-                            val (targetItemId, neededQty) = resolveCascadingIngredientConsumption(
+                            val deductions = resolveCascadingIngredientConsumption(
                                 warehouseId,
                                 ing,
                                 item.quantity,
-                                perOrderConsumption
+                                allBatchAllocatedStock
                             )
-                            perOrderConsumption[targetItemId] = (perOrderConsumption[targetItemId] ?: BigDecimal.ZERO).add(neededQty)
+                            for ((targetItemId, neededQty) in deductions) {
+                                perOrderConsumption[targetItemId] = (perOrderConsumption[targetItemId] ?: BigDecimal.ZERO).add(neededQty)
+                                allBatchAllocatedStock[targetItemId] = (allBatchAllocatedStock[targetItemId] ?: BigDecimal.ZERO).add(neededQty)
+                            }
                         }
                     }
 
@@ -222,13 +260,16 @@ class InventoryEodConsumptionService(
                         if (choiceRecipe != null) {
                             val choiceIngredients = recipeIngredientRepository.findByRecipeId(choiceRecipe.id)
                             for (cIng in choiceIngredients) {
-                                val (targetItemId, neededQty) = resolveCascadingIngredientConsumption(
+                                val deductions = resolveCascadingIngredientConsumption(
                                     warehouseId,
                                     cIng,
                                     item.quantity,
-                                    perOrderConsumption
+                                    allBatchAllocatedStock
                                 )
-                                perOrderConsumption[targetItemId] = (perOrderConsumption[targetItemId] ?: BigDecimal.ZERO).add(neededQty)
+                                for ((targetItemId, neededQty) in deductions) {
+                                    perOrderConsumption[targetItemId] = (perOrderConsumption[targetItemId] ?: BigDecimal.ZERO).add(neededQty)
+                                    allBatchAllocatedStock[targetItemId] = (allBatchAllocatedStock[targetItemId] ?: BigDecimal.ZERO).add(neededQty)
+                                }
                             }
                         }
                     }
@@ -243,13 +284,16 @@ class InventoryEodConsumptionService(
                         if (rewardRecipe != null) {
                             val rewardIngredients = recipeIngredientRepository.findByRecipeId(rewardRecipe.id)
                             for (rIng in rewardIngredients) {
-                                val (targetItemId, neededQty) = resolveCascadingIngredientConsumption(
+                                val deductions = resolveCascadingIngredientConsumption(
                                     warehouseId,
                                     rIng,
                                     alloc.freeQuantity,
-                                    perOrderConsumption
+                                    allBatchAllocatedStock
                                 )
-                                perOrderConsumption[targetItemId] = (perOrderConsumption[targetItemId] ?: BigDecimal.ZERO).add(neededQty)
+                                for ((targetItemId, neededQty) in deductions) {
+                                    perOrderConsumption[targetItemId] = (perOrderConsumption[targetItemId] ?: BigDecimal.ZERO).add(neededQty)
+                                    allBatchAllocatedStock[targetItemId] = (allBatchAllocatedStock[targetItemId] ?: BigDecimal.ZERO).add(neededQty)
+                                }
                             }
                         }
                     }
