@@ -246,6 +246,19 @@ class InventoryService(
 
     fun listMovements(warehouseId: String): List<StockMovement> = movementRepository.findByWarehouseId(warehouseId)
 
+    /** Read side for the stock history pages. Optional warehouseId filters; null lists all. */
+    fun listTransfers(warehouseId: String? = null): List<StockTransfer> =
+        if (warehouseId.isNullOrBlank()) transferRepository.findAll()
+        else transferRepository.findBySourceWarehouseIdOrTargetWarehouseId(warehouseId, warehouseId)
+
+    fun listStockCounts(warehouseId: String? = null): List<StockCount> =
+        if (warehouseId.isNullOrBlank()) countRepository.findAll()
+        else countRepository.findByWarehouseId(warehouseId)
+
+    fun listStockWastes(warehouseId: String? = null): List<StockWaste> =
+        if (warehouseId.isNullOrBlank()) wasteRepository.findAll()
+        else wasteRepository.findByWarehouseId(warehouseId)
+
     @Transactional
     fun assignItemToWarehouse(warehouseId: String, inventoryItemId: String): InventoryStock {
         val stockOpt = stockRepository.findByWarehouseIdAndInventoryItemId(warehouseId, inventoryItemId)
@@ -517,9 +530,6 @@ class InventoryService(
         return savedWaste
     }
 
-    fun listTransfers(warehouseId: String): List<StockTransfer> {
-        return transferRepository.findBySourceWarehouseIdOrTargetWarehouseId(warehouseId, warehouseId)
-    }
 }
 
 @RestController
@@ -613,6 +623,11 @@ class InventoryController(
         return ApiResponse.success(inventoryService.processPurchaseReceive(dto), "Purchase receive processed and WAC updated successfully")
     }
 
+    @GetMapping("/transfers")
+    fun listTransfers(@RequestParam(required = false) warehouseId: String?): ApiResponse<List<StockTransfer>> {
+        return ApiResponse.success(inventoryService.listTransfers(warehouseId))
+    }
+
     @PostMapping("/transfers")
     @PreAuthorize("hasAuthority('STOCK_TRANSFER') or hasAuthority('ROLE_SUPER_ADMIN')")
     fun createTransfer(@RequestBody dto: CreateTransferDto): ApiResponse<StockTransfer> {
@@ -631,6 +646,11 @@ class InventoryController(
         return ApiResponse.success(inventoryService.receiveTransfer(id), "Stock transfer received and WAC updated successfully")
     }
 
+    @GetMapping("/counts")
+    fun listStockCounts(@RequestParam(required = false) warehouseId: String?): ApiResponse<List<StockCount>> {
+        return ApiResponse.success(inventoryService.listStockCounts(warehouseId))
+    }
+
     @PostMapping("/counts")
     @PreAuthorize("hasAuthority('STOCK_ADJUST') or hasAuthority('ROLE_SUPER_ADMIN')")
     fun recordStockCount(@RequestBody dto: StockCountCreateDto): ApiResponse<StockCount> {
@@ -641,6 +661,11 @@ class InventoryController(
     @PreAuthorize("hasAuthority('STOCK_ADJUST') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('INVENTORY_ITEM_MANAGE')")
     fun assignItemToWarehouse(@RequestBody dto: AssignStockDto): ApiResponse<InventoryStock> {
         return ApiResponse.success(inventoryService.assignItemToWarehouse(dto.warehouseId, dto.inventoryItemId), "Item assigned to warehouse successfully")
+    }
+
+    @GetMapping("/wastes")
+    fun listStockWastes(@RequestParam(required = false) warehouseId: String?): ApiResponse<List<StockWaste>> {
+        return ApiResponse.success(inventoryService.listStockWastes(warehouseId))
     }
 
     @PostMapping("/waste")
