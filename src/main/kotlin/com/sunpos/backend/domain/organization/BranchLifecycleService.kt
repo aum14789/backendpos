@@ -76,32 +76,25 @@ class BranchLifecycleService(
             "DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ?)",
             branchId
         )
-        // Check order_recipe_snapshots table
-        try {
-            jdbcTemplate.update(
-                "DELETE FROM order_recipe_snapshots WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ?)",
-                branchId
-            )
-        } catch (_: Exception) {}
+        jdbcTemplate.update(
+            "DELETE FROM order_recipe_snapshots WHERE order_id IN (SELECT id FROM orders WHERE branch_id = ?)",
+            branchId
+        )
 
         jdbcTemplate.update("DELETE FROM orders WHERE branch_id = ?", branchId)
 
         // 3. Delete cash movements and cashier shifts
-        try {
-            jdbcTemplate.update(
-                "DELETE FROM cash_movements WHERE shift_id IN (SELECT id FROM cashier_shifts WHERE branch_id = ?)",
-                branchId
-            )
-        } catch (_: Exception) {}
+        jdbcTemplate.update(
+            "DELETE FROM cash_movements WHERE shift_id IN (SELECT id FROM cashier_shifts WHERE branch_id = ?)",
+            branchId
+        )
         jdbcTemplate.update("DELETE FROM cashier_shifts WHERE branch_id = ?", branchId)
 
         // 4. Delete table sessions and reset table occupancy status to AVAILABLE
+        // NOTE: never swallow exceptions here — on PostgreSQL a failed statement aborts the
+        // whole transaction (25P02), so a try/catch fallback just moves the failure downstream.
         jdbcTemplate.update("DELETE FROM table_sessions WHERE branch_id = ?", branchId)
-        try {
-            jdbcTemplate.update("UPDATE tables SET status = 'AVAILABLE', current_order_id = NULL WHERE branch_id = ?", branchId)
-        } catch (_: Exception) {
-            jdbcTemplate.update("UPDATE tables SET status = 'AVAILABLE' WHERE branch_id = ?", branchId)
-        }
+        jdbcTemplate.update("UPDATE tables SET status = 'AVAILABLE' WHERE branch_id = ?", branchId)
 
         // 5. Reset invoice sequence to 0
         branch.invoiceSequenceNumber = 0L
