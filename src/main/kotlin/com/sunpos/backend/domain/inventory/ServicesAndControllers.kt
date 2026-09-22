@@ -193,7 +193,10 @@ class InventoryService(
         unitRepository.deleteById(id)
     }
 
-    fun getStockOnHand(warehouseId: String): List<InventoryStock> = stockRepository.findByWarehouseId(warehouseId)
+    /** Read side for the stock overview page. Optional warehouseId filters; null lists all warehouses. */
+    fun getStockOnHand(warehouseId: String? = null): List<InventoryStock> =
+        if (warehouseId.isNullOrBlank()) stockRepository.findAll()
+        else stockRepository.findByWarehouseId(warehouseId)
 
     fun getNegativeStocks(branchId: String? = null): List<NegativeStockDto> {
         val targetWarehouses = if (!branchId.isNullOrBlank()) {
@@ -244,7 +247,10 @@ class InventoryService(
         )
     }
 
-    fun listMovements(warehouseId: String): List<StockMovement> = movementRepository.findByWarehouseId(warehouseId)
+    /** Read side for the stock movement history. Optional warehouseId filters; null lists all warehouses. */
+    fun listMovements(warehouseId: String? = null): List<StockMovement> =
+        if (warehouseId.isNullOrBlank()) movementRepository.findAll()
+        else movementRepository.findByWarehouseId(warehouseId)
 
     /** Read side for the stock history pages. Optional warehouseId filters; null lists all. */
     fun listTransfers(warehouseId: String? = null): List<StockTransfer> =
@@ -603,7 +609,7 @@ class InventoryController(
     }
 
     @GetMapping("/stocks")
-    fun getStockOnHand(@RequestParam warehouseId: String): ApiResponse<List<InventoryStock>> {
+    fun getStockOnHand(@RequestParam(required = false) warehouseId: String?): ApiResponse<List<InventoryStock>> {
         return ApiResponse.success(inventoryService.getStockOnHand(warehouseId))
     }
 
@@ -613,7 +619,7 @@ class InventoryController(
     }
 
     @GetMapping("/movements")
-    fun getMovements(@RequestParam warehouseId: String): ApiResponse<List<StockMovement>> {
+    fun getMovements(@RequestParam(required = false) warehouseId: String?): ApiResponse<List<StockMovement>> {
         return ApiResponse.success(inventoryService.listMovements(warehouseId))
     }
 
