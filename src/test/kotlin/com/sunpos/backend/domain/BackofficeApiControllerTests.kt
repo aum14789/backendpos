@@ -59,7 +59,7 @@ class BackofficeApiControllerTests {
         val warehouseRepository = mock(WarehouseRepository::class.java)
         organizationController = OrganizationController(
             companyRepository, brandRepository, branchRepository, deviceRepository, activationCodeRepository,
-            warehouseRepository
+            warehouseRepository, mock(com.sunpos.backend.domain.organization.BranchLifecycleService::class.java)
         )
 
         // Catalog mocks

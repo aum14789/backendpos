@@ -96,7 +96,8 @@ CREATE TABLE IF NOT EXISTS branches (
     allow_cash_payment BOOLEAN DEFAULT true,
     invoice_sequence_number BIGINT DEFAULT 0,
     CONSTRAINT pk_branches PRIMARY KEY (id),
-    CONSTRAINT branches_code_key UNIQUE (code)
+    CONSTRAINT branches_code_key UNIQUE (code),
+    CONSTRAINT branches_name_key UNIQUE (name)
 );
 
 -- Table: brands

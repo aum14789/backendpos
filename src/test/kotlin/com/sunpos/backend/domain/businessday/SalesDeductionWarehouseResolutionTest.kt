@@ -128,7 +128,8 @@ class SalesDeductionWarehouseResolutionTest {
         testFixtureFactory.ensureBrand("brand-001", "comp-001")
         val controller = OrganizationController(
             companyRepository, brandRepository, branchRepository, deviceRepository, activationCodeRepository,
-            warehouseRepository
+            warehouseRepository, org.springframework.test.context.TestContextManager(this.javaClass)
+                .testContext.applicationContext.getBean(com.sunpos.backend.domain.organization.BranchLifecycleService::class.java)
         )
 
         val branch = controller.createBranch(

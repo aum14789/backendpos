@@ -51,7 +51,8 @@ class OrganizationController(
     private val branchRepository: BranchRepository,
     private val deviceRepository: DeviceRepository,
     private val activationCodeRepository: ActivationCodeRepository,
-    private val warehouseRepository: WarehouseRepository
+    private val warehouseRepository: WarehouseRepository,
+    private val lifecycleService: com.sunpos.backend.domain.organization.BranchLifecycleService
 ) {
 
     @GetMapping("/companies")
@@ -198,9 +199,9 @@ class OrganizationController(
     @PutMapping("/branches/{id}")
     @PreAuthorize("hasAuthority('ORGANIZATION_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_BRANCH_MANAGER')")
     fun updateBranch(@PathVariable id: String, @RequestBody dto: BranchCreateDto): ApiResponse<Branch> {
+        // Spec 0036: ACTIVE branches can't go back / change code; code changes only when CLOSED.
+        lifecycleService.updateBranchWithRules(id, status = dto.status.ifBlank { null }, code = dto.code.ifBlank { null }, name = dto.name)
         val branch = branchRepository.findById(id).orElseThrow { IllegalArgumentException("Branch not found") }
-        branch.name = dto.name
-        if (dto.code.isNotBlank()) branch.code = dto.code
         branch.brandId = dto.brandId
         branch.address = dto.address
         branch.phone = dto.phone
@@ -213,9 +214,7 @@ class OrganizationController(
         branch.dynDnsHost = dto.dynDnsHost
         branch.allowedIpSubnets = dto.allowedIpSubnets
         branch.isTestBranch = dto.isTestBranch
-        if (dto.status.isNotBlank()) {
-            branch.status = dto.status
-        }
+        // status & code are applied above through updateBranchWithRules (Spec 0036)
         if (dto.allowCashPayment != null) {
             branch.allowCashPayment = dto.allowCashPayment
         }
