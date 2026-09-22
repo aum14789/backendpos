@@ -70,9 +70,13 @@ class OrganizationController(
     // ── Brands ──
 
     @GetMapping("/brands")
-    fun getBrands(@RequestParam(required = false) companyId: String?): ApiResponse<List<Brand>> {
+    fun getBrands(
+        @RequestParam(required = false) companyId: String?,
+        @RequestParam(required = false, defaultValue = "false") includeInactive: Boolean = false
+    ): ApiResponse<List<Brand>> {
         val brands = if (!companyId.isNullOrBlank()) brandRepository.findByCompanyId(companyId) else brandRepository.findAll()
-        return ApiResponse.success(brands)
+        val visible = if (includeInactive) brands else brands.filter { it.isActive }
+        return ApiResponse.success(visible)
     }
 
     @PostMapping("/brands")
@@ -109,6 +113,15 @@ class OrganizationController(
     @PreAuthorize("hasAuthority('ORGANIZATION_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN')")
     fun deleteBrand(@PathVariable id: String): ApiResponse<Boolean> {
         val brand = brandRepository.findById(id).orElseThrow { IllegalArgumentException("Brand not found") }
+
+        // Spec 0036 (ผู้ใช้เพิ่ม): ลบแบรนด์ได้เมื่อไม่มีสาขาในแบรนด์เลย — ไม่ว่าสถานะหรือ active ของสาขา
+        val branchCount = branchRepository.findByBrandId(id).size
+        if (branchCount > 0) {
+            throw IllegalStateException(
+                "ลบแบรนด์ไม่ได้ เพราะยังมีสาขาอยู่ในแบรนด์นี้ $branchCount สาขา — ต้องย้ายหรือลบสาขาทั้งหมดออกก่อน (ไม่ว่าสาขาจะเปิดหรือปิดก็ตาม)"
+            )
+        }
+
         brand.isActive = false
         brand.updatedAt = Instant.now()
         brandRepository.save(brand)
