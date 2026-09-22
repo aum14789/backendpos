@@ -2508,7 +2508,9 @@ INSERT INTO permissions (id, code, description) VALUES
   ('perm-21', 'INVENTORY_CONFIG_MANAGE', 'กำหนดค่าระบบคลังสินค้าและการตัดสต็อก (Inventory Settings)'),
   ('perm-22', 'COUPON_MANAGE', 'สร้างและจัดการคูปองส่วนลด (Manage Coupons & Vouchers)'),
   ('perm-23', 'crm.coupon.manage', 'จัดการคูปองสิทธิประโยชน์และระบบสมาชิก CRM (CRM Loyalty Coupons)'),
-  ('perm-24', 'POS_CONFIG_MANAGE', 'ตั้งค่าระบบเครื่อง POS และเครื่องพิมพ์ใบเสร็จ (POS Devices & Printers)')
+  ('perm-24', 'POS_CONFIG_MANAGE', 'ตั้งค่าระบบเครื่อง POS และเครื่องพิมพ์ใบเสร็จ (POS Devices & Printers)'),
+  ('perm-25', 'BRAND_MANAGE', 'จัดการแบรนด์และจัดสรรเมนูเข้าแบรนด์ (Manage Brands & Catalog Allocation)'),
+  ('perm-26', 'BRANCH_MANAGE', 'จัดการสาขาทั้งหมดในองค์กร (Manage Branches)')
 ON CONFLICT (id) DO UPDATE SET description = EXCLUDED.description;
 
 -- 2. System Roles (คงเหลือเฉพาะ ROLE_SUPER_ADMIN สูงสุดสำหรับผู้ดูแลระบบ)
