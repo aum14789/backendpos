@@ -150,7 +150,8 @@ class UserService(
         val roles = roleRepository.findAllById(roleIds)
         val roleNames = roles.map { it.name }
 
-        val permissionIds = roleIds.flatMap { rId -> rolePermissionRepository.findByIdRoleId(rId).map { it.permissionId } }.distinct()
+        // Batched single queries (ADR 0033): never fan out per role / per permission.
+        val permissionIds = rolePermissionRepository.findByFieldIn("roleId", roleIds).map { it.permissionId }.distinct()
         val permissions = permissionRepository.findAllById(permissionIds).map { it.code }
 
         return UserResponseDto(

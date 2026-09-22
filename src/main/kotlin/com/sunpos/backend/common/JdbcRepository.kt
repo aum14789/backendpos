@@ -214,9 +214,51 @@ abstract class JdbcRepository<T : Any>(
     }
 
     open fun findAllById(ids: Iterable<String>): List<T> {
-        val idList = ids.toList()
+        val idList = ids.toList().distinct()
         if (idList.isEmpty()) return emptyList()
-        return idList.mapNotNull { id -> findById(id).orElse(null) }
+        val pkCol = resolveIdColumn()
+        return try {
+            // Single batched query (ADR 0033: login must not fan out to N round-trips).
+            val placeholders = idList.joinToString(", ") { "?" }
+            val list = jdbcTemplate.query(
+                "SELECT * FROM $tableName WHERE $pkCol IN ($placeholders)",
+                rowMapper,
+                *idList.toTypedArray()
+            )
+            if (list.isNotEmpty()) {
+                list.forEach { localCache[getId(it)] = it }
+                val byId = list.associateBy { getId(it) }
+                idList.mapNotNull { byId[it] ?: localCache[it] }
+            } else {
+                idList.mapNotNull { localCache[it] }
+            }
+        } catch (e: Exception) {
+            logger.trace("JDBC findAllById query error for {}, using localCache: {}", tableName, e.message)
+            idList.mapNotNull { localCache[it] }
+        }
+    }
+
+    open fun findByFieldIn(field: String, values: Collection<Any>): List<T> {
+        if (values.isEmpty()) return emptyList()
+        val col = toSnakeCase(field)
+        return try {
+            // Single batched query — same N+1 rationale as findAllById.
+            val placeholders = values.joinToString(", ") { "?" }
+            val sqlValues = values.map { if (it is Enum<*>) it.name else it }.toTypedArray()
+            val list = jdbcTemplate.query(
+                "SELECT * FROM $tableName WHERE $col IN ($placeholders)",
+                rowMapper,
+                *sqlValues
+            )
+            if (list.isNotEmpty()) {
+                list.forEach { localCache[getId(it)] = it }
+                return list
+            }
+            emptyList()
+        } catch (e: Exception) {
+            logger.trace("JDBC findByFieldIn query error for {} where {} in {}, using localCache: {}", tableName, col, values, e.message)
+            localCache.values.filter { entity -> values.any { v -> matchesField(entity, field, v) } }
+        }
     }
 
     open fun findAll(): List<T> {

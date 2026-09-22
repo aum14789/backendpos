@@ -31,6 +31,9 @@ class SecurityAndCorsTest {
     @Autowired
     private lateinit var testFixtureFactory: com.sunpos.backend.common.TestFixtureFactory
 
+    @Autowired
+    private lateinit var jwtTokenProvider: JwtTokenProvider
+
     @Test
     fun `test public endpoints allow unauthenticated access`() {
         // GET /api/public/menu/{branchId} without any token
@@ -134,12 +137,30 @@ class SecurityAndCorsTest {
         mockMvc.perform(get("/api/v1/orders"))
             .andExpect(status().isUnauthorized)
 
-        // With valid Mock Cashier JWT -> 200 OK
+        // With real signed JWT -> 200 OK
+        val realToken = jwtTokenProvider.generateToken("cashier01", listOf("ROLE_CASHIER", "ORDER_VIEW"))
+        mockMvc.perform(
+            get("/api/v1/orders")
+                .header("Authorization", "Bearer $realToken")
+        )
+            .andExpect(status().isOk)
+    }
+
+    @Test
+    fun `test forged and mock tokens are rejected fail-closed (ADR 0033)`() {
+        // Legacy mock bypass must no longer work
         mockMvc.perform(
             get("/api/v1/orders")
                 .header("Authorization", "Bearer jwt_mock_cashier_token")
         )
-            .andExpect(status().isOk)
+            .andExpect(status().isUnauthorized)
+
+        // Garbage token
+        mockMvc.perform(
+            get("/api/v1/orders")
+                .header("Authorization", "Bearer not-a-real-token")
+        )
+            .andExpect(status().isUnauthorized)
     }
 
     @Test

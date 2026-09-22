@@ -284,53 +284,8 @@ class JwtAuthenticationFilter(
 
                 val auth = UsernamePasswordAuthenticationToken(username, null, authorities)
                 SecurityContextHolder.getContext().authentication = auth
-            } else if (token.startsWith("jwt_mock_") || token.startsWith("jwt_token_")) {
-                val isSuper = token.contains("admin") || token.contains("hq") || token.contains("super")
-                val isOffice = token.contains("office")
-                val isManager = token.contains("manager")
-                val isWarehouse = token.contains("warehouse") || token.contains("wh")
-                val authorities = if (isSuper) {
-                    listOf(
-                        "ROLE_SUPER_ADMIN", "ORGANIZATION_MANAGE", "SYSTEM_CONFIG",
-                        "CATALOG_DISTRIBUTE", "INVENTORY_DISTRIBUTE", "BRAND_MANAGE",
-                        "BRANCH_MANAGE", "DEVICE_MANAGE", "USER_MANAGE", "ROLE_MANAGE",
-                        "MENU_MANAGE", "INVENTORY_VIEW", "INVENTORY_ITEM_MANAGE",
-                        "STOCK_ADJUST", "STOCK_TRANSFER", "STOCK_COUNT", "RECIPE_MANAGE",
-                        "PRODUCTION_MANAGE", "PURCHASE_ORDER", "GOODS_RECEIVE", "SUPPLIER_MANAGE",
-                        "CRM_MANAGE", "REPORT_SALES_VIEW", "REPORT_FINANCIAL_VIEW",
-                        "REPORT_EXECUTIVE_VIEW", "REPORT_INVENTORY_VIEW"
-                    ).map { SimpleGrantedAuthority(it) }
-                } else if (isOffice) {
-                    listOf(
-                        "ROLE_OFFICE_STAFF", "MENU_MANAGE", "BUFFET_MANAGE", "RECIPE_MANAGE",
-                        "PRODUCTION_MANAGE", "SUPPLIER_MANAGE", "PURCHASE_ORDER", "GOODS_RECEIVE",
-                        "CRM_MANAGE", "INVENTORY_VIEW", "INVENTORY_ITEM_MANAGE", "REPORT_SALES_VIEW",
-                        "REPORT_FINANCIAL_VIEW", "REPORT_INVENTORY_VIEW"
-                    ).map { SimpleGrantedAuthority(it) }
-                } else if (isManager) {
-                    listOf(
-                        "ROLE_BRANCH_MANAGER", "ROLE_STORE_MANAGER", "ORGANIZATION_MANAGE",
-                        "ORDER_VIEW", "ORDER_CREATE", "ORDER_CANCEL", "ORDER_VOID",
-                        "DISCOUNT_APPLY", "DISCOUNT_OVERRIDE", "COUPON_OVERRIDE", "PAYMENT_MANAGE", "PAYMENT_REFUND",
-                        "SHIFT_MANAGE", "MENU_MANAGE", "BUFFET_MANAGE", "INVENTORY_VIEW",
-                        "INVENTORY_ITEM_MANAGE", "STOCK_ADJUST", "STOCK_TRANSFER", "STOCK_COUNT",
-                        "RECIPE_MANAGE", "PURCHASE_ORDER", "GOODS_RECEIVE", "CRM_MANAGE", "REPORT_SALES_VIEW"
-                    ).map { SimpleGrantedAuthority(it) }
-                } else if (isWarehouse) {
-                    listOf(
-                        "ROLE_WAREHOUSE_STAFF", "INVENTORY_VIEW", "INVENTORY_ITEM_MANAGE",
-                        "STOCK_ADJUST", "STOCK_TRANSFER", "STOCK_COUNT", "PURCHASE_ORDER",
-                        "GOODS_RECEIVE", "SUPPLIER_MANAGE", "REPORT_INVENTORY_VIEW"
-                    ).map { SimpleGrantedAuthority(it) }
-                } else {
-                    listOf(
-                        "ROLE_CASHIER", "ORDER_VIEW", "ORDER_CREATE", "ORDER_CANCEL",
-                        "DISCOUNT_APPLY", "PAYMENT_MANAGE", "SHIFT_MANAGE", "MENU_MANAGE", "CRM_MANAGE"
-                    ).map { SimpleGrantedAuthority(it) }
-                }
-                val auth = UsernamePasswordAuthenticationToken("dev_admin", null, authorities)
-                SecurityContextHolder.getContext().authentication = auth
-            }
+            } // Invalid, expired or forged tokens: stay unauthenticated.
+            // The entry point below returns 401 (fail-closed, ADR 0033).
         }
         filterChain.doFilter(request, response)
     }
