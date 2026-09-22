@@ -106,13 +106,14 @@ class TableService(
     }
 
     fun createTable(dto: TableCreateDto): RestaurantTable {
+        val validZoneId = requireValidZone(dto.branchId, dto.zoneId)
         val validTableTypeId = if (!dto.tableTypeId.isNullOrBlank()) {
             if (tableTypeRepository.findById(dto.tableTypeId).isPresent) dto.tableTypeId else null
         } else null
 
         val table = RestaurantTable(
             branchId = dto.branchId,
-            zoneId = dto.zoneId,
+            zoneId = validZoneId,
             tableTypeId = validTableTypeId,
             nameNumber = dto.nameNumber,
             capacity = dto.capacity,
@@ -124,7 +125,7 @@ class TableService(
     @Transactional
     fun updateTable(tableId: String, dto: TableUpdateDto): RestaurantTable {
         val table = tableRepository.findById(tableId).orElseThrow { IllegalArgumentException("Table not found") }
-        table.zoneId = dto.zoneId
+        table.zoneId = requireValidZone(table.branchId, dto.zoneId)
         val validTableTypeId = if (!dto.tableTypeId.isNullOrBlank()) {
             if (tableTypeRepository.findById(dto.tableTypeId).isPresent) dto.tableTypeId else null
         } else null
@@ -133,6 +134,20 @@ class TableService(
         table.capacity = dto.capacity
         table.isActive = dto.isActive
         return tableRepository.save(table)
+    }
+
+    /** โต๊ะทุกตัวต้องมีโซน และโซนต้องเป็นโซนจริงของสาขาเดียวกันเท่านั้น */
+    private fun requireValidZone(branchId: String, zoneId: String?): String {
+        if (zoneId.isNullOrBlank()) {
+            throw IllegalArgumentException("ต้องระบุโซน (zone) ของโต๊ะ โดยเลือกจากโซนที่ตั้งไว้แล้วเท่านั้น")
+        }
+        val zone = zoneRepository.findById(zoneId).orElseThrow {
+            IllegalArgumentException("ไม่พบโซนที่ระบุ (zoneId=$zoneId) ต้องเลือกจากโซนที่ตั้งไว้แล้วเท่านั้น")
+        }
+        if (zone.branchId != branchId) {
+            throw IllegalArgumentException("โซนที่เลือกไม่ได้อยู่ในสาขาเดียวกับโต๊ะ")
+        }
+        return zone.id
     }
 
     @Transactional
