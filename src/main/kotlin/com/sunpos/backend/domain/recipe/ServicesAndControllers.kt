@@ -409,7 +409,10 @@ class ProductionService(
         return productionOrderRepository.save(order)
     }
 
-    fun listProductionOrders(warehouseId: String): List<ProductionOrder> = productionOrderRepository.findByWarehouseId(warehouseId)
+    /** Read side for the production page. Optional warehouseId filters; null lists all warehouses. */
+    fun listProductionOrders(warehouseId: String? = null): List<ProductionOrder> =
+        if (warehouseId.isNullOrBlank()) productionOrderRepository.findAll()
+        else productionOrderRepository.findByWarehouseId(warehouseId)
 }
 
 @Service
@@ -550,7 +553,7 @@ class ProductionController(
     }
 
     @GetMapping
-    fun listOrders(@RequestParam warehouseId: String): ApiResponse<List<ProductionOrder>> {
+    fun listOrders(@RequestParam(required = false) warehouseId: String?): ApiResponse<List<ProductionOrder>> {
         return ApiResponse.success(productionService.listProductionOrders(warehouseId))
     }
 }

@@ -173,9 +173,10 @@ class PaymentService(
         return paymentRepository.findByOrderId(orderId).map { toResponseDto(it) }
     }
 
-    fun listPayments(branchId: String): List<PaymentResponseDto> {
-        return paymentRepository.findByBranchId(branchId).map { toResponseDto(it) }
-    }
+    /** Read side for the payments page. Optional branchId filters; null lists all branches. */
+    fun listPayments(branchId: String? = null): List<PaymentResponseDto> =
+        if (branchId.isNullOrBlank()) paymentRepository.findAll().map { toResponseDto(it) }
+        else paymentRepository.findByBranchId(branchId).map { toResponseDto(it) }
 
     private fun toResponseDto(p: PaymentTransaction) = PaymentResponseDto(
         id = p.id,
@@ -209,7 +210,7 @@ class PaymentController(
     }
 
     @GetMapping
-    fun listPayments(@RequestParam branchId: String): ApiResponse<List<PaymentResponseDto>> {
+    fun listPayments(@RequestParam(required = false) branchId: String?): ApiResponse<List<PaymentResponseDto>> {
         return ApiResponse.success(paymentService.listPayments(branchId))
     }
 

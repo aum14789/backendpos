@@ -121,9 +121,10 @@ class ShiftService(
         return shiftRepository.findByBranchIdAndDeviceIdAndStatus(branchId, deviceId, ShiftStatus.OPEN).orElse(null)
     }
 
-    fun listShifts(branchId: String): List<CashierShift> {
-        return shiftRepository.findByBranchId(branchId)
-    }
+    /** Read side for the shifts page. Optional branchId filters; null lists all branches. */
+    fun listShifts(branchId: String? = null): List<CashierShift> =
+        if (branchId.isNullOrBlank()) shiftRepository.findAll()
+        else shiftRepository.findByBranchId(branchId)
 
     private fun recalculateExpectedCash(shift: CashierShift) {
         // expected_cash = opening_cash + cash_sales + cash_in - cash_out - refund_cash
@@ -166,7 +167,7 @@ class ShiftController(
     }
 
     @GetMapping
-    fun listShifts(@RequestParam branchId: String): ApiResponse<List<CashierShift>> {
+    fun listShifts(@RequestParam(required = false) branchId: String?): ApiResponse<List<CashierShift>> {
         return ApiResponse.success(shiftService.listShifts(branchId))
     }
 }

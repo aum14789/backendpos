@@ -307,7 +307,10 @@ class PurchasingService(
 
     fun listReturns(): List<PurchaseReturn> = prRepository.findAll()
 
-    fun listPriceHistories(supplierId: String): List<SupplierPriceHistory> = priceHistoryRepository.findBySupplierId(supplierId)
+    /** Read side for the supplier price history page. Optional supplierId filters; null lists all suppliers. */
+    fun listPriceHistories(supplierId: String? = null): List<SupplierPriceHistory> =
+        if (supplierId.isNullOrBlank()) priceHistoryRepository.findAll()
+        else priceHistoryRepository.findBySupplierId(supplierId)
 }
 
 // REST Controller
@@ -365,7 +368,7 @@ class PurchasingController(
     }
 
     @GetMapping("/price-history")
-    fun getPriceHistory(@RequestParam supplierId: String): ApiResponse<List<SupplierPriceHistory>> {
+    fun getPriceHistory(@RequestParam(required = false) supplierId: String?): ApiResponse<List<SupplierPriceHistory>> {
         return ApiResponse.success(purchasingService.listPriceHistories(supplierId))
     }
 }
