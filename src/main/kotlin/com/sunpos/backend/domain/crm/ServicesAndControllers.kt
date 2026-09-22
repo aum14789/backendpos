@@ -939,6 +939,13 @@ class CrmService(
 class CustomerController(
     private val crmService: CrmService
 ) {
+    /** Read side for the backoffice customer list; mirrors the legacy GET /crm/customers. */
+    @GetMapping
+    fun listCustomers(principal: Principal?): ApiResponse<List<Customer>> {
+        val companyId = crmService.resolveCompanyId(principal?.name)
+        return ApiResponse.success(crmService.listCustomers(companyId))
+    }
+
     @PostMapping
     @PreAuthorize("hasAuthority('crm.customer.write') or hasAuthority('CUSTOMER_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_STORE_MANAGER') or hasAuthority('ROLE_CASHIER')")
     fun createCustomer(
