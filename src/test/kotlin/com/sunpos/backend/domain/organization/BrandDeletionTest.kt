@@ -66,25 +66,69 @@ class BrandDeletionTest {
     }
 
     @Test
-    fun `empty brand is soft-deleted and disappears from the brand list`() {
+    fun `empty brand without branches or allocations is hard-deleted permanently`() {
         val result = organizationController.deleteBrand(brandId)
         assertTrue(result.data == true)
 
-        val row = jdbc.queryForMap("SELECT is_active FROM brands WHERE id = ?", brandId)
-        assertEquals(false, row["is_active"])
-
-        val visible = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM brands WHERE id = ? AND is_active = true", Long::class.java, brandId
+        // Verifies hard delete: row is completely removed from brands table
+        val count = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM brands WHERE id = ?", Long::class.java, brandId
         )
-        assertEquals(0L, visible)
+        assertEquals(0L, count)
 
-        // API getBrands hides inactive brands by default
+        // API getBrands no longer returns it
         val brandList = organizationController.getBrands(null).data!!
         assertFalse(brandList.any { it.id == brandId })
 
-        // When explicitly requested, inactive brands can still be inspected
-        val allBrands = organizationController.getBrands(null, includeInactive = true).data!!
-        assertTrue(allBrands.any { it.id == brandId })
+        // Code is free to be reused immediately
+        val recreated = organizationController.createBrand(
+            BrandCreateDto(companyId = "comp-001", name = "แบรนด์ใหม่", code = "DEL-01")
+        )
+        assertTrue(recreated.success)
+        assertEquals("DEL-01", recreated.data?.code)
+    }
+
+    @Test
+    fun `brand with menu item allocations cannot be deleted and warns user to remove allocations`() {
+        testFixtureFactory.ensureMenuItem("item-del-01")
+        jdbc.update(
+            "INSERT INTO menu_item_branches (id, menu_item_id, brand_id, branch_id, is_active) VALUES ('mib-del-1', 'item-del-01', ?, NULL, true)",
+            brandId
+        )
+
+        val ex = assertThrows(IllegalStateException::class.java) {
+            organizationController.deleteBrand(brandId)
+        }
+        assertTrue(ex.message!!.contains("จัดสรรเข้าแบรนด์"))
+    }
+
+    @Test
+    fun `brand with buffet promotions cannot be deleted and warns user to delete promotions`() {
+        jdbc.update(
+            "INSERT INTO buffet_promotions (id, brand_id, name, price_per_person, status) VALUES ('bp-del-1', ?, 'Del Buffet', 299.00, 'ACTIVE')",
+            brandId
+        )
+
+        val ex = assertThrows(IllegalStateException::class.java) {
+            organizationController.deleteBrand(brandId)
+        }
+        assertTrue(ex.message!!.contains("โปรโมชั่นบุฟเฟต์"))
+    }
+
+    @Test
+    fun `stage 1 branch check takes precedence over allocations`() {
+        testFixtureFactory.ensureBranch(id = "branch-del-prec", brandId = brandId, name = "สาขาในแบรนด์")
+        jdbc.update(
+            "INSERT INTO buffet_promotions (id, brand_id, name, price_per_person, status) VALUES ('bp-del-2', ?, 'Del Buffet', 299.00, 'ACTIVE')",
+            brandId
+        )
+
+        val ex = assertThrows(IllegalStateException::class.java) {
+            organizationController.deleteBrand(brandId)
+        }
+        // Stage 1 blocks first with branch message
+        assertTrue(ex.message!!.contains("สาขา"))
+        assertFalse(ex.message!!.contains("โปรโมชั่นบุฟเฟต์"))
     }
 
     @Test

@@ -52,7 +52,8 @@ class OrganizationController(
     private val deviceRepository: DeviceRepository,
     private val activationCodeRepository: ActivationCodeRepository,
     private val warehouseRepository: WarehouseRepository,
-    private val lifecycleService: com.sunpos.backend.domain.organization.BranchLifecycleService
+    private val lifecycleService: com.sunpos.backend.domain.organization.BranchLifecycleService,
+    private val jdbcTemplate: JdbcTemplate? = null
 ) {
 
     @GetMapping("/companies")
@@ -82,8 +83,21 @@ class OrganizationController(
     @PostMapping("/brands")
     @PreAuthorize("hasAuthority('ORGANIZATION_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN')")
     fun createBrand(@RequestBody dto: BrandCreateDto): ApiResponse<Brand> {
-        if (brandRepository.findByCode(dto.code).isPresent) {
-            throw IllegalArgumentException("Brand code '${dto.code}' already exists")
+        val existingOpt = brandRepository.findByCode(dto.code)
+        if (existingOpt.isPresent) {
+            val existing = existingOpt.get()
+            if (existing.isActive) {
+                throw IllegalArgumentException("Brand code '${dto.code}' already exists")
+            }
+            // หากมี record เก่าที่ตกค้างในสถานะ inactive ให้กู้คืนและอัปเดตเป็น active
+            existing.companyId = dto.companyId.ifBlank { existing.companyId }
+            existing.name = dto.name
+            existing.logoUrl = dto.logoUrl
+            existing.description = dto.description
+            existing.allowCashPayment = dto.allowCashPayment
+            existing.isActive = true
+            existing.updatedAt = Instant.now()
+            return ApiResponse.success(brandRepository.save(existing), "Brand created successfully")
         }
 
         val brand = Brand(
@@ -92,7 +106,8 @@ class OrganizationController(
             code = dto.code,
             logoUrl = dto.logoUrl,
             description = dto.description,
-            allowCashPayment = dto.allowCashPayment
+            allowCashPayment = dto.allowCashPayment,
+            isActive = true
         )
         return ApiResponse.success(brandRepository.save(brand), "Brand created successfully")
     }
@@ -114,7 +129,7 @@ class OrganizationController(
     fun deleteBrand(@PathVariable id: String): ApiResponse<Boolean> {
         val brand = brandRepository.findById(id).orElseThrow { IllegalArgumentException("Brand not found") }
 
-        // Spec 0036 (ผู้ใช้เพิ่ม): ลบแบรนด์ได้เมื่อไม่มีสาขาในแบรนด์เลย — ไม่ว่าสถานะหรือ active ของสาขา
+        // ด่านที่ 1: เช็คสาขา — ถ้ายังมีสาขาอยู่ จบทันที และแจ้งเตือนผู้ใช้
         val branchCount = branchRepository.findByBrandId(id).size
         if (branchCount > 0) {
             throw IllegalStateException(
@@ -122,9 +137,24 @@ class OrganizationController(
             )
         }
 
-        brand.isActive = false
-        brand.updatedAt = Instant.now()
-        brandRepository.save(brand)
+        // ด่านที่ 2: เช็คเมนูจัดสรรและโปรโมชั่นบุฟเฟต์ — ถ้ามี ให้บล็อกและเตือนผู้ใช้ให้ไปนำออกเอง
+        val menuAllocCount = try {
+            jdbcTemplate?.queryForObject("SELECT count(*) FROM menu_item_branches WHERE brand_id = ?", Int::class.java, id) ?: 0
+        } catch (_: Exception) { 0 }
+
+        val buffetCount = try {
+            jdbcTemplate?.queryForObject("SELECT count(*) FROM buffet_promotions WHERE brand_id = ?", Int::class.java, id) ?: 0
+        } catch (_: Exception) { 0 }
+
+        if (menuAllocCount > 0 || buffetCount > 0) {
+            val reasons = mutableListOf<String>()
+            if (menuAllocCount > 0) reasons.add("ยังมีเมนูที่จัดสรรเข้าแบรนด์นี้ ($menuAllocCount รายการ) — กรุณายกเลิกการจัดสรรเมนูออกจากแบรนด์ก่อน")
+            if (buffetCount > 0) reasons.add("ยังมีโปรโมชั่นบุฟเฟต์ ($buffetCount รายการ) ผูกกับแบรนด์นี้ — กรุณาลบโปรโมชั่นบุฟเฟต์ของแบรนด์นี้ก่อน")
+            throw IllegalStateException("ลบแบรนด์ไม่ได้ เนื่องจาก: ${reasons.joinToString(" และ ")}")
+        }
+
+        // ด่านที่ 3: ลบแบรนด์ถาวร (Hard Delete)
+        brandRepository.deleteById(id)
         return ApiResponse.success(true, "Brand deleted successfully")
     }
 
