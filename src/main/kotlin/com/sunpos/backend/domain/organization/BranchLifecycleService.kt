@@ -288,15 +288,14 @@ class BranchLifecycleService(
             )
         }
 
-        branch.isActive = false
-        branch.updatedAt = Instant.now()
-        branchRepository.save(branch)
+        // Auto-provisioned artifacts belong to the branch record itself; cascade delete them cleanly.
+        jdbcTemplate.update("DELETE FROM activation_codes WHERE branch_id = ?", branchId)
+        jdbcTemplate.update("DELETE FROM warehouses WHERE branch_id = ?", branchId)
 
-        // Auto-provisioned artifacts belong to the branch record itself; retire them quietly.
-        jdbcTemplate.update("UPDATE activation_codes SET status = 'REVOKED' WHERE branch_id = ? AND status <> 'REVOKED'", branchId)
-        jdbcTemplate.update("UPDATE warehouses SET is_active = false WHERE branch_id = ?", branchId)
+        // Hard-delete the branch record permanently
+        branchRepository.deleteById(branchId)
 
-        log.info("Branch [{}] soft-deleted (Spec 0036)", branchId)
+        log.info("Branch [{}] cleanly hard-deleted along with auto-provisioned artifacts (Spec 0036 Amendment)", branchId)
         return true
     }
 

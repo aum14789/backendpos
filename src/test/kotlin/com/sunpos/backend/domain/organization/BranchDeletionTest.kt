@@ -39,11 +39,17 @@ class BranchDeletionTest {
     // ── DELETE ──
 
     @Test
-    fun `untouched pre-opening branch is soft-deleted`() {
+    fun `untouched pre-opening branch is cleanly hard-deleted`() {
         val deleted = branchLifecycleService.deleteBranch(branchId)
         assertTrue(deleted)
-        val row = jdbc.queryForMap("SELECT is_active FROM branches WHERE id = ?", branchId)
-        assertEquals(false, row["is_active"])
+        val branchCount = jdbc.queryForObject("SELECT count(*) FROM branches WHERE id = ?", Int::class.java, branchId) ?: 0
+        assertEquals(0, branchCount, "Branch row must be completely removed")
+
+        val whCount = jdbc.queryForObject("SELECT count(*) FROM warehouses WHERE branch_id = ?", Int::class.java, branchId) ?: 0
+        assertEquals(0, whCount, "Auto-provisioned warehouses must be removed")
+
+        val codeCount = jdbc.queryForObject("SELECT count(*) FROM activation_codes WHERE branch_id = ?", Int::class.java, branchId) ?: 0
+        assertEquals(0, codeCount, "Auto-provisioned activation codes must be removed")
     }
 
     @Test
