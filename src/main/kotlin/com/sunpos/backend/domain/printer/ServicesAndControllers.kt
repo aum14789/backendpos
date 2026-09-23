@@ -42,7 +42,8 @@ class PrinterService(
             ipAddress = req.ipAddress.trim(),
             port = req.port,
             isDocumentPrinter = req.isDocumentPrinter,
-            isActive = req.isActive
+            isActive = req.isActive,
+            kitchenStationId = req.kitchenStationId?.takeIf { it.isNotBlank() }
         )
         printerRepository.save(printer)
         printerMenuCategoryRepository.saveAll(printer.id, req.menuCategoryIds)

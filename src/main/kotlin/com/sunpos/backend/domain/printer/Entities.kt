@@ -20,10 +20,11 @@ data class Printer(
     val ipAddress: String = "",
     val port: Int = 9100,
     var isDocumentPrinter: Boolean = false,
-    var isActive: Boolean = true
+    var isActive: Boolean = true,
+    var kitchenStationId: String? = null
 )
 
-/** DTO สำหรับ Backoffice + POS sync (รวมรายการหมวดอาหารที่เครื่องรับพิมพ์) */
+/** DTO สำหรับ Backoffice + POS sync (รวม kitchenStationId และ menuCategoryIds) */
 data class PrinterDto(
     val id: String,
     val branchId: String,
@@ -32,13 +33,15 @@ data class PrinterDto(
     val port: Int,
     val isDocumentPrinter: Boolean,
     val isActive: Boolean,
-    val menuCategoryIds: List<String> = emptyList()
+    val menuCategoryIds: List<String> = emptyList(),
+    val kitchenStationId: String? = null
 )
 
 fun Printer.toDto(menuCategoryIds: List<String> = emptyList()) = PrinterDto(
     id = id, branchId = branchId, name = name, ipAddress = ipAddress,
     port = port, isDocumentPrinter = isDocumentPrinter, isActive = isActive,
-    menuCategoryIds = menuCategoryIds
+    menuCategoryIds = menuCategoryIds,
+    kitchenStationId = kitchenStationId
 )
 
 data class UpsertPrinterRequest(
@@ -48,7 +51,8 @@ data class UpsertPrinterRequest(
     val port: Int = 9100,
     val isDocumentPrinter: Boolean = false,
     val isActive: Boolean = true,
-    val menuCategoryIds: List<String> = emptyList()
+    val menuCategoryIds: List<String> = emptyList(),
+    val kitchenStationId: String? = null
 )
 
 @Repository
