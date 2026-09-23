@@ -246,19 +246,19 @@ class BranchLifecycleService(
     fun checkNameAndCodeAvailable(name: String, code: String, excludeBranchId: String?): BranchNameCodeCheckDto {
         val nameTaken = if (excludeBranchId != null)
             jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM branches WHERE name = ? AND id <> ?", Long::class.java, name.trim(), excludeBranchId
+                "SELECT COUNT(*) FROM branches WHERE name = ? AND id <> ? AND is_active = true", Long::class.java, name.trim(), excludeBranchId
             ) ?: 0L
         else
             jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM branches WHERE name = ?", Long::class.java, name.trim()
+                "SELECT COUNT(*) FROM branches WHERE name = ? AND is_active = true", Long::class.java, name.trim()
             ) ?: 0L
         val codeTaken = if (code.isBlank()) 0L else if (excludeBranchId != null)
             jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM branches WHERE code = ? AND id <> ?", Long::class.java, code.trim(), excludeBranchId
+                "SELECT COUNT(*) FROM branches WHERE code = ? AND id <> ? AND is_active = true", Long::class.java, code.trim(), excludeBranchId
             ) ?: 0L
         else
             jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM branches WHERE code = ?", Long::class.java, code.trim()
+                "SELECT COUNT(*) FROM branches WHERE code = ? AND is_active = true", Long::class.java, code.trim()
             ) ?: 0L
         return BranchNameCodeCheckDto(nameAvailable = nameTaken == 0L, codeAvailable = codeTaken == 0L)
     }

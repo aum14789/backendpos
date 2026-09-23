@@ -163,21 +163,82 @@ class OrganizationController(
     @GetMapping("/branches")
     fun getBranches(
         @RequestParam(required = false) companyId: String?,
-        @RequestParam(required = false) brandId: String?
+        @RequestParam(required = false) brandId: String?,
+        @RequestParam(required = false, defaultValue = "false") includeInactive: Boolean = false
     ): ApiResponse<List<Branch>> {
         val branches = when {
             !brandId.isNullOrBlank() -> branchRepository.findByBrandId(brandId)
             !companyId.isNullOrBlank() -> branchRepository.findByCompanyId(companyId)
             else -> branchRepository.findAll()
         }
-        return ApiResponse.success(branches)
+        val visible = if (includeInactive) branches else branches.filter { it.isActive }
+        return ApiResponse.success(visible)
     }
 
     @PostMapping("/branches")
     @PreAuthorize("hasAuthority('ORGANIZATION_MANAGE') or hasAuthority('ROLE_SUPER_ADMIN') or hasAuthority('ROLE_BRANCH_MANAGER')")
     fun createBranch(@RequestBody dto: BranchCreateDto): ApiResponse<Branch> {
-        if (branchRepository.findByCode(dto.code).isPresent) {
-            throw IllegalArgumentException("Branch code '${dto.code}' already exists")
+        val existingOpt = branchRepository.findByCode(dto.code)
+        if (existingOpt.isPresent) {
+            val existing = existingOpt.get()
+            if (existing.isActive) {
+                throw IllegalArgumentException("Branch code '${dto.code}' already exists")
+            }
+            val resolvedAllowCash = dto.allowCashPayment ?: if (!dto.brandId.isNullOrBlank()) {
+                brandRepository.findById(dto.brandId).map { it.allowCashPayment }.orElse(true)
+            } else true
+
+            existing.companyId = dto.companyId.ifBlank { existing.companyId }
+            existing.brandId = dto.brandId ?: existing.brandId
+            existing.name = dto.name
+            existing.address = dto.address
+            existing.phone = dto.phone
+            existing.openTime = dto.openTime
+            existing.closeTime = dto.closeTime
+            existing.businessDayCloseTime = dto.businessDayCloseTime
+            existing.taxRate = dto.taxRate
+            existing.serviceChargeRate = dto.serviceChargeRate
+            existing.ipAddress = dto.ipAddress
+            existing.dynDnsHost = dto.dynDnsHost
+            existing.allowedIpSubnets = dto.allowedIpSubnets
+            existing.activationCode = dto.activationCode
+            existing.isTestBranch = dto.isTestBranch
+            existing.status = dto.status
+            existing.allowCashPayment = resolvedAllowCash
+            existing.isActive = true
+            existing.updatedAt = Instant.now()
+            val saved = branchRepository.save(existing)
+
+            if (warehouseRepository.findByBranchId(saved.id).isEmpty()) {
+                warehouseRepository.save(MainWarehouseProvisioning.warehouseFor(saved.id, saved.name, saved.code))
+            }
+            if (!dto.activationCode.isNullOrBlank()) {
+                val code = dto.activationCode.trim()
+                val existingCodeOpt = activationCodeRepository.findByCode(code)
+                if (existingCodeOpt.isPresent) {
+                    val codeEntity = existingCodeOpt.get()
+                    codeEntity.branchId = saved.id
+                    codeEntity.branchName = saved.name
+                    codeEntity.branchCode = saved.code
+                    codeEntity.status = "ACTIVE"
+                    activationCodeRepository.save(codeEntity)
+                } else {
+                    activationCodeRepository.save(
+                        ActivationCode(
+                            code = code,
+                            branchId = saved.id,
+                            branchName = saved.name,
+                            branchCode = saved.code,
+                            deviceCode = "POS-01",
+                            deviceName = "POS Terminal (POS-01)",
+                            companyId = saved.companyId,
+                            companyName = "SunPOS Restaurant Group Co., Ltd.",
+                            status = "ACTIVE"
+                        )
+                    )
+                }
+            }
+            return ApiResponse.success(saved, "Branch created successfully")
         }
 
         val resolvedAllowCash = dto.allowCashPayment ?: if (!dto.brandId.isNullOrBlank()) {
