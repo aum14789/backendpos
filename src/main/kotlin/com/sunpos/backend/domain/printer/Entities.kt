@@ -24,7 +24,7 @@ data class Printer(
     var kitchenStationId: String? = null
 )
 
-/** DTO สำหรับ Backoffice + POS sync (รวม kitchenStationId และ menuCategoryIds) */
+/** DTO สำหรับ Backoffice + POS sync (รวม kitchenStationIds และ menuCategoryIds) */
 data class PrinterDto(
     val id: String,
     val branchId: String,
@@ -34,14 +34,20 @@ data class PrinterDto(
     val isDocumentPrinter: Boolean,
     val isActive: Boolean,
     val menuCategoryIds: List<String> = emptyList(),
-    val kitchenStationId: String? = null
+    /** @deprecated ใช้ kitchenStationIds แทน (backward compat กับ POS รุ่นเก่า) */
+    val kitchenStationId: String? = null,
+    val kitchenStationIds: List<String> = emptyList()
 )
 
-fun Printer.toDto(menuCategoryIds: List<String> = emptyList()) = PrinterDto(
+fun Printer.toDto(
+    menuCategoryIds: List<String> = emptyList(),
+    kitchenStationIds: List<String> = emptyList()
+) = PrinterDto(
     id = id, branchId = branchId, name = name, ipAddress = ipAddress,
     port = port, isDocumentPrinter = isDocumentPrinter, isActive = isActive,
     menuCategoryIds = menuCategoryIds,
-    kitchenStationId = kitchenStationId
+    kitchenStationId = kitchenStationIds.firstOrNull() ?: kitchenStationId,
+    kitchenStationIds = kitchenStationIds
 )
 
 data class UpsertPrinterRequest(
@@ -52,8 +58,19 @@ data class UpsertPrinterRequest(
     val isDocumentPrinter: Boolean = false,
     val isActive: Boolean = true,
     val menuCategoryIds: List<String> = emptyList(),
-    val kitchenStationId: String? = null
-)
+    /** @deprecated ใช้ kitchenStationIds แทน */
+    val kitchenStationId: String? = null,
+    val kitchenStationIds: List<String> = emptyList()
+) {
+    /** รวม kitchenStationId เดิม + kitchenStationIds ให้ไม่ซ้ำ */
+    fun resolvedStationIds(): List<String> {
+        val merged = kitchenStationIds.toMutableList()
+        if (!kitchenStationId.isNullOrBlank() && !merged.contains(kitchenStationId)) {
+            merged.add(0, kitchenStationId)
+        }
+        return merged.filter { it.isNotBlank() }.distinct()
+    }
+}
 
 @Repository
 class PrinterRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<Printer>(jdbcTemplate, "printers", Printer::class.java) {
@@ -61,6 +78,31 @@ class PrinterRepository(jdbcTemplate: JdbcTemplate) : JdbcRepository<Printer>(jd
 
     fun findByBranchIdAndIsActiveTrue(branchId: String): List<Printer> =
         findByFields(mapOf("branchId" to branchId, "isActive" to true))
+}
+
+@Repository
+class PrinterKitchenStationRepository(private val jdbcTemplate: JdbcTemplate) {
+
+    fun findStationIdsByPrinterId(printerId: String): List<String> =
+        jdbcTemplate.queryForList(
+            "SELECT station_id FROM printer_kitchen_stations WHERE printer_id = ?",
+            String::class.java,
+            printerId
+        )
+
+    fun deleteByPrinterId(printerId: String) {
+        jdbcTemplate.update("DELETE FROM printer_kitchen_stations WHERE printer_id = ?", printerId)
+    }
+
+    fun saveAll(printerId: String, stationIds: List<String>) {
+        deleteByPrinterId(printerId)
+        for (sid in stationIds) {
+            jdbcTemplate.update(
+                "INSERT INTO printer_kitchen_stations (printer_id, station_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                printerId, sid
+            )
+        }
+    }
 }
 
 @Repository

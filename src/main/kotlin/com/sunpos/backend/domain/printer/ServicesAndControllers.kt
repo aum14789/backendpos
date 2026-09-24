@@ -10,11 +10,15 @@ import java.util.UUID
 @Service
 class PrinterService(
     private val printerRepository: PrinterRepository,
-    private val printerMenuCategoryRepository: PrinterMenuCategoryRepository
+    private val printerMenuCategoryRepository: PrinterMenuCategoryRepository,
+    private val printerKitchenStationRepository: PrinterKitchenStationRepository
 ) {
     fun listPrinters(branchId: String): List<PrinterDto> {
         return printerRepository.findByBranchId(branchId).map { p ->
-            p.toDto(printerMenuCategoryRepository.findCategoryIdsByPrinterId(p.id))
+            p.toDto(
+                menuCategoryIds = printerMenuCategoryRepository.findCategoryIdsByPrinterId(p.id),
+                kitchenStationIds = printerKitchenStationRepository.findStationIdsByPrinterId(p.id)
+            )
         }
     }
 
@@ -35,6 +39,8 @@ class PrinterService(
                 }
         }
 
+        val resolvedStationIds = req.resolvedStationIds()
+        // backward compat: เก็บ station แรกไว้ใน column เดิมด้วย
         val printer = Printer(
             id = req.id ?: UUID.randomUUID().toString(),
             branchId = branchId,
@@ -43,12 +49,16 @@ class PrinterService(
             port = req.port,
             isDocumentPrinter = req.isDocumentPrinter,
             isActive = req.isActive,
-            kitchenStationId = req.kitchenStationId?.takeIf { it.isNotBlank() }
+            kitchenStationId = resolvedStationIds.firstOrNull()
         )
         printerRepository.save(printer)
         printerMenuCategoryRepository.saveAll(printer.id, req.menuCategoryIds)
+        printerKitchenStationRepository.saveAll(printer.id, resolvedStationIds)
 
-        return printer.toDto(req.menuCategoryIds)
+        return printer.toDto(
+            menuCategoryIds = req.menuCategoryIds,
+            kitchenStationIds = resolvedStationIds
+        )
     }
 
     @Transactional
